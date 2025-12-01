@@ -1,11 +1,49 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { firmaService } from '../services/firmaService';
 
 function FrmNavbar() {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Firma bilgileri
+  const [firmaAdi, setFirmaAdi] = useState('Firma');
+  const [firmaFoto, setFirmaFoto] = useState<string | null>(null);
+
+  // Firma bilgilerini yükle
+  useEffect(() => {
+    const loadFirmaBilgileri = async () => {
+      try {
+        const response = await firmaService.getProfile();
+        console.log('🏢 Navbar firma bilgileri:', response);
+        
+        if (response.success && response.firma) {
+          setFirmaAdi(response.firma.ad || 'Firma');
+          
+          const photoUrl = response.firma.profilFotoUrl;
+          console.log('🖼️ Navbar fotoğraf URL:', photoUrl);
+          
+          if (photoUrl) {
+            let finalUrl = '';
+            if (photoUrl.startsWith('http://') || photoUrl.startsWith('https://')) {
+              finalUrl = photoUrl;
+            } else if (photoUrl.startsWith('/')) {
+              finalUrl = `http://localhost:5000${photoUrl}`;
+            } else {
+              finalUrl = `http://localhost:5000/api/documents/file/${photoUrl}`;
+            }
+            console.log('🖼️ Navbar final URL:', finalUrl);
+            setFirmaFoto(finalUrl);
+          }
+        }
+      } catch (error) {
+        console.error('Firma bilgileri yüklenemedi:', error);
+      }
+    };
+    loadFirmaBilgileri();
+  }, []);
 
   // Bildirimler - gerçek uygulamada API'den gelecek
   const [bildirimler, setBildirimler] = useState([
@@ -47,9 +85,6 @@ function FrmNavbar() {
     // Gerçek uygulamada API çağrısı yapılacak
     setBildirimler(prev => prev.filter(b => b.id !== id));
   };
-
-  // Firma bilgileri - gerçek uygulamada context veya state'den gelecek
-  const firmaAdi = 'Firma Adı'; // Bu değer gerçek uygulamada dinamik olacak
 
   const handleLogout = () => {
     // Çıkış yapma işlemi
@@ -224,8 +259,21 @@ function FrmNavbar() {
                 type="button"
                 onClick={() => setIsProfileMenuOpen((prev) => !prev)}
               >
-                <div className="w-8 h-8 rounded-full bg-primary/20 dark:bg-primary/30 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-primary text-base">business</span>
+                <div className="w-8 h-8 rounded-full bg-primary/20 dark:bg-primary/30 flex items-center justify-center overflow-hidden">
+                  {firmaFoto ? (
+                    <img 
+                      src={firmaFoto} 
+                      alt={firmaAdi}
+                      className="w-full h-full object-cover"
+                      crossOrigin="anonymous"
+                      onError={() => {
+                        console.error('❌ Navbar fotoğraf yüklenemedi:', firmaFoto);
+                        setFirmaFoto(null);
+                      }}
+                    />
+                  ) : (
+                    <span className="material-symbols-outlined text-primary text-base">business</span>
+                  )}
                 </div>
                 <span className="hidden sm:block text-sm font-medium text-content-light dark:text-content-dark">{firmaAdi}</span>
                 <span className="material-symbols-outlined text-subtle-light dark:text-subtle-dark text-base">expand_more</span>
@@ -237,9 +285,26 @@ function FrmNavbar() {
                   onMouseLeave={() => setIsProfileMenuOpen(false)}
                 >
                   <div className="rounded-lg border border-border-light dark:border-border-dark bg-background-light dark:bg-background-dark shadow-lg py-2 pointer-events-auto">
-                    <div className="px-4 py-2 border-b border-border-light dark:border-border-dark pointer-events-auto">
-                      <p className="text-sm font-semibold text-content-light dark:text-content-dark">{firmaAdi}</p>
-                      <p className="text-xs text-subtle-light dark:text-subtle-dark">Firma Hesabı</p>
+                    <div className="px-4 py-3 border-b border-border-light dark:border-border-dark pointer-events-auto">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-primary/20 dark:bg-primary/30 flex items-center justify-center overflow-hidden flex-shrink-0">
+                          {firmaFoto ? (
+                            <img 
+                              src={firmaFoto} 
+                              alt={firmaAdi}
+                              className="w-full h-full object-cover"
+                              crossOrigin="anonymous"
+                              onError={() => setFirmaFoto(null)}
+                            />
+                          ) : (
+                            <span className="material-symbols-outlined text-primary text-lg">business</span>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-content-light dark:text-content-dark">{firmaAdi}</p>
+                          <p className="text-xs text-subtle-light dark:text-subtle-dark">Firma Hesabı</p>
+                        </div>
+                      </div>
                     </div>
                     <Link
                       className="block px-4 py-2 text-sm text-subtle-light dark:text-subtle-dark hover:bg-primary/10 dark:hover:bg-primary/20 hover:text-primary dark:hover:text-primary transition-colors cursor-pointer pointer-events-auto"

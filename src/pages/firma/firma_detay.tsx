@@ -1,246 +1,146 @@
 import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import FrmNavbar from '../../components/frmnavbar';
+import { publicFirmaService, type FirmaDetay } from '../../services/firmaService';
+import TomTomMap from '../../components/TomTomMap';
 
-function FirmaDetay() {
+function FirmaDetayPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
-  // Firma verileri - gerçek uygulamada API'den gelecek
-  const firms: { [key: string]: any } = {
-    'bioenerji-as': {
-      name: 'BioEnerji A.Ş.',
-      sector: 'Enerji',
-      city: 'Ankara',
-      district: 'Çankaya',
-      image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCJux5fXj_K4jD4vHtF0CU64CB5vu_kgDjGtl0pUPIU_AoVAWPbJQiUnQYB-txIuUTOoe2T9fA7hbkVLnW3FCTu4nUbgTyu_MWt5hyK3M73qSU3hCtHCZ6JfeChWD-RLs0dPMfOLUbR5kbZAK0llRVuAdy37Qq6nw5e9adueks-w8Ayo_woBikptdX9bSwFY7YmzLz0IttwY6-ENN1Zwxzh2lge0u9ZEghHvUAPEM5IdNCqeF9vaagr6zMxwOZFXQ5IUlXWNfmEou4',
-      address: 'Çankaya Mah. Enerji Sok. No: 123, Çankaya, Ankara, Türkiye',
-      phone: '+90 312 123 45 67',
-      email: 'info@bioenerji.com.tr',
-      website: 'www.bioenerji.com.tr',
-      verified: true,
-      description: 'BioEnerji A.Ş., tarımsal atıkların ve organik maddelerin biyogaz ve biyoyakıt üretiminde kullanılması konusunda uzmanlaşmış bir enerji firmasıdır. Sürdürülebilir enerji çözümleri sunarak çevreye katkı sağlamaktadır.',
-      certificates: [
-        'ISO 9001 Kalite Yönetim Sistemi',
-        'ISO 14001 Çevre Yönetim Sistemi',
-        'OHSAS 18001 İş Sağlığı ve Güvenliği Yönetim Sistemi'
-      ],
-      services: 'Tarımsal atıkların geri dönüşümü, biyogaz üretimi, biyoyakıt üretimi ve enerji danışmanlık hizmetleri',
-      reviews: [
-        {
-          name: 'Ayşe Yılmaz',
-          date: '2023-01-15',
-          rating: 5,
-          comment: 'BioEnerji ile çalışmak çok verimli oldu. Atıklarımızı değerlendirerek hem çevreye katkı sağladık hem de ek gelir elde ettik.',
-          avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAeoGO2yvDVE3kZoPXTGMyDCvX2PJaJOdkLLr9Mr0oEeLDJmWoT_gsRI6TmSNZCHI0oFtpKK2Nidcg7ozVTcNntCjPIwTALvLsoMJ-hgkIBvfw5rNFfeEF8IaFwrHnP-xwWfrrMlbzJFOn0bTkKzhggFx-PCFd9AX3ao9pR09gnGgCWtnUlCz-uOPRxhIYYIe5NDQozoBbrFPGFiXfw8cuRG9R9pK4aVvzTDiEx7YDaYDF8-aCRJTFS6nrRkgjsQuNmWKwrNMQ2DIc',
-          likes: 3,
-          dislikes: 0
-        },
-        {
-          name: 'Mehmet Demir',
-          date: '2022-12-20',
-          rating: 4,
-          comment: 'Hizmetlerinden memnun kaldık. Danışmanlık hizmetleri sayesinde üretim süreçlerimizi iyileştirdik.',
-          avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBS-v2q4iEPq_bKTqEp_5FnpPE7MMZeDH0MeTomJxGI7j9N92K6pTrOMKO4PuW9uZliN3rQmmrRm3dLvl0_oOuSSJuO95JjarHhjDXxuxPNIVct41y8glkHk0vZCbvcthqwBeBC8i1-aCJxX4pr2tQcAX6NRwX6NJ61aQBirYg2M9SOaheuB9YY_Sx-zivKZF1ez9aSkxdekYUkuRctsh7vBhFyVDSgai7yRA0KeBPPY9cPcubbgXuWyEWBkWTJsz5CqcuS5gAUte4',
-          likes: 2,
-          dislikes: 1
+  const [firma, setFirma] = useState<FirmaDetay | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Firma verilerini yükle
+  useEffect(() => {
+    const loadFirma = async () => {
+      if (!id) {
+        setError('Firma ID\'si bulunamadı');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await publicFirmaService.getFirmaDetay(id);
+        
+        if (response.success) {
+          setFirma(response.firma);
+        } else {
+          setError('Firma bilgileri yüklenemedi');
         }
-      ],
-      socialMedia: {
-        twitter: '#',
-        facebook: '#',
-        instagram: '#'
-      }
-    },
-    'organik-gubre-sanayi': {
-      name: 'Organik Gübre Sanayi',
-      sector: 'Tarım',
-      city: 'İzmir',
-      district: 'Bornova',
-      image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCJux5fXj_K4jD4vHtF0CU64CB5vu_kgDjGtl0pUPIU_AoVAWPbJQiUnQYB-txIuUTOoe2T9fA7hbkVLnW3FCTu4nUbgTyu_MWt5hyK3M73qSU3hCtHCZ6JfeChWD-RLs0dPMfOLUbR5kbZAK0llRVuAdy37Qq6nw5e9adueks-w8Ayo_woBikptdX9bSwFY7YmzLz0IttwY6-ENN1Zwxzh2lge0u9ZEghHvUAPEM5IdNCqeF9vaagr6zMxwOZFXQ5IUlXWNfmEou4',
-      address: 'Bornova Mah. Tarım Cad. No: 45, Bornova, İzmir, Türkiye',
-      phone: '+90 232 234 56 78',
-      email: 'info@organikgubre.com.tr',
-      website: 'www.organikgubre.com.tr',
-      verified: true,
-      description: 'Organik Gübre Sanayi, tarımsal atıkların organik gübreye dönüştürülmesi konusunda uzmanlaşmış bir firmadır. Çevre dostu üretim yöntemleri ile kaliteli organik gübre üretmektedir.',
-      certificates: [
-        'ISO 9001 Kalite Yönetim Sistemi',
-        'Organik Ürün Sertifikası',
-        'TSE Belgesi'
-      ],
-      services: 'Organik gübre üretimi, tarımsal atık yönetimi, kompost üretimi ve tarımsal danışmanlık hizmetleri',
-      reviews: [
-        {
-          name: 'Ali Kaya',
-          date: '2023-03-10',
-          rating: 5,
-          comment: 'Organik gübrelerimiz sayesinde verimliliğimiz arttı. Çok memnunuz.',
-          avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAeoGO2yvDVE3kZoPXTGMyDCvX2PJaJOdkLLr9Mr0oEeLDJmWoT_gsRI6TmSNZCHI0oFtpKK2Nidcg7ozVTcNntCjPIwTALvLsoMJ-hgkIBvfw5rNFfeEF8IaFwrHnP-xwWfrrMlbzJFOn0bTkKzhggFx-PCFd9AX3ao9pR09gnGgCWtnUlCz-uOPRxhIYYIe5NDQozoBbrFPGFiXfw8cuRG9R9pK4aVvzTDiEx7YDaYDF8-aCRJTFS6nrRkgjsQuNmWKwrNMQ2DIc',
-          likes: 5,
-          dislikes: 0
+      } catch (err: any) {
+        console.error('Firma detay yükleme hatası:', err);
+        if (err.response?.status === 404) {
+          setError('Firma bulunamadı');
+        } else {
+          setError(err.response?.data?.message || 'Firma bilgileri yüklenirken bir hata oluştu');
         }
-      ],
-      socialMedia: {
-        twitter: '#',
-        facebook: '#',
-        instagram: '#'
+      } finally {
+        setLoading(false);
       }
-    },
-    'sonmez-tekstil': {
-      name: 'Sönmez Tekstil',
-      sector: 'Tekstil',
-      city: 'Bursa',
-      district: 'Osmangazi',
-      image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCJux5fXj_K4jD4vHtF0CU64CB5vu_kgDjGtl0pUPIU_AoVAWPbJQiUnQYB-txIuUTOoe2T9fA7hbkVLnW3FCTu4nUbgTyu_MWt5hyK3M73qSU3hCtHCZ6JfeChWD-RLs0dPMfOLUbR5kbZAK0llRVuAdy37Qq6nw5e9adueks-w8Ayo_woBikptdX9bSwFY7YmzLz0IttwY6-ENN1Zwxzh2lge0u9ZEghHvUAPEM5IdNCqeF9vaagr6zMxwOZFXQ5IUlXWNfmEou4',
-      address: 'Osmangazi Mah. Tekstil Sok. No: 78, Osmangazi, Bursa, Türkiye',
-      phone: '+90 224 345 67 89',
-      email: 'info@sonmeztekstil.com.tr',
-      website: 'www.sonmeztekstil.com.tr',
-      verified: true,
-      description: 'Sönmez Tekstil, tarımsal liflerin tekstil endüstrisinde kullanılması konusunda öncü bir firmadır. Pamuk, keten ve diğer doğal liflerin işlenmesi ve tekstil ürünlerine dönüştürülmesi konusunda uzmanlaşmıştır.',
-      certificates: [
-        'ISO 9001 Kalite Yönetim Sistemi',
-        'Oeko-Tex Standard 100',
-        'Global Organic Textile Standard (GOTS)'
-      ],
-      services: 'Doğal lif işleme, organik tekstil üretimi, sürdürülebilir tekstil çözümleri ve tekstil danışmanlık hizmetleri',
-      reviews: [
-        {
-          name: 'Zeynep Arslan',
-          date: '2023-02-28',
-          rating: 4,
-          comment: 'Kaliteli ürünler ve iyi hizmet. Organik tekstil ürünleri için tercih ediyoruz.',
-          avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAeoGO2yvDVE3kZoPXTGMyDCvX2PJaJOdkLLr9Mr0oEeLDJmWoT_gsRI6TmSNZCHI0oFtpKK2Nidcg7ozVTcNntCjPIwTALvLsoMJ-hgkIBvfw5rNFfeEF8IaFwrHnP-xwWfrrMlbzJFOn0bTkKzhggFx-PCFd9AX3ao9pR09gnGgCWtnUlCz-uOPRxhIYYIe5NDQozoBbrFPGFiXfw8cuRG9R9pK4aVvzTDiEx7YDaYDF8-aCRJTFS6nrRkgjsQuNmWKwrNMQ2DIc',
-          likes: 4,
-          dislikes: 0
-        }
-      ],
-      socialMedia: {
-        twitter: '#',
-        facebook: '#',
-        instagram: '#'
-      }
-    },
-    'yesil-yakitlar-ltd': {
-      name: 'Yeşil Yakıtlar Ltd.',
-      sector: 'Enerji',
-      city: 'Adana',
-      district: 'Seyhan',
-      image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCJux5fXj_K4jD4vHtF0CU64CB5vu_kgDjGtl0pUPIU_AoVAWPbJQiUnQYB-txIuUTOoe2T9fA7hbkVLnW3FCTu4nUbgTyu_MWt5hyK3M73qSU3hCtHCZ6JfeChWD-RLs0dPMfOLUbR5kbZAK0llRVuAdy37Qq6nw5e9adueks-w8Ayo_woBikptdX9bSwFY7YmzLz0IttwY6-ENN1Zwxzh2lge0u9ZEghHvUAPEM5IdNCqeF9vaagr6zMxwOZFXQ5IUlXWNfmEou4',
-      address: 'Seyhan Mah. Enerji Cad. No: 90, Seyhan, Adana, Türkiye',
-      phone: '+90 322 456 78 90',
-      email: 'info@yesilyakitlar.com.tr',
-      website: 'www.yesilyakitlar.com.tr',
-      verified: false,
-      description: 'Yeşil Yakıtlar Ltd., tarımsal atıkların biyoyakıt ve biyodizel üretiminde kullanılması konusunda faaliyet göstermektedir. Yenilenebilir enerji kaynaklarının geliştirilmesi için çalışmaktadır.',
-      certificates: [
-        'ISO 9001 Kalite Yönetim Sistemi'
-      ],
-      services: 'Biyoyakıt üretimi, biyodizel üretimi, tarımsal atık yönetimi ve enerji danışmanlık hizmetleri',
-      reviews: [],
-      socialMedia: {
-        twitter: '#',
-        facebook: '#',
-        instagram: '#'
-      }
-    },
-    'doga-tarim-urunleri': {
-      name: 'Doğa Tarım Ürünleri',
-      sector: 'Tarım',
-      city: 'Antalya',
-      district: 'Muratpaşa',
-      image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCJux5fXj_K4jD4vHtF0CU64CB5vu_kgDjGtl0pUPIU_AoVAWPbJQiUnQYB-txIuUTOoe2T9fA7hbkVLnW3FCTu4nUbgTyu_MWt5hyK3M73qSU3hCtHCZ6JfeChWD-RLs0dPMfOLUbR5kbZAK0llRVuAdy37Qq6nw5e9adueks-w8Ayo_woBikptdX9bSwFY7YmzLz0IttwY6-ENN1Zwxzh2lge0u9ZEghHvUAPEM5IdNCqeF9vaagr6zMxwOZFXQ5IUlXWNfmEou4',
-      address: 'Muratpaşa Mah. Tarım Sok. No: 12, Muratpaşa, Antalya, Türkiye',
-      phone: '+90 242 567 89 01',
-      email: 'info@dogatarim.com.tr',
-      website: 'www.dogatarim.com.tr',
-      verified: true,
-      description: 'Doğa Tarım Ürünleri, organik tarım ürünlerinin işlenmesi ve pazarlanması konusunda uzmanlaşmış bir firmadır. Sürdürülebilir tarım uygulamalarını desteklemektedir.',
-      certificates: [
-        'ISO 9001 Kalite Yönetim Sistemi',
-        'Organik Ürün Sertifikası',
-        'İyi Tarım Uygulamaları (İTU) Sertifikası'
-      ],
-      services: 'Organik tarım ürünleri işleme, paketleme, pazarlama ve tarımsal danışmanlık hizmetleri',
-      reviews: [
-        {
-          name: 'Fatma Öz',
-          date: '2023-04-05',
-          rating: 5,
-          comment: 'Organik ürünlerin kalitesi çok yüksek. Müşteri hizmetleri de çok iyi.',
-          avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAeoGO2yvDVE3kZoPXTGMyDCvX2PJaJOdkLLr9Mr0oEeLDJmWoT_gsRI6TmSNZCHI0oFtpKK2Nidcg7ozVTcNntCjPIwTALvLsoMJ-hgkIBvfw5rNFfeEF8IaFwrHnP-xwWfrrMlbzJFOn0bTkKzhggFx-PCFd9AX3ao9pR09gnGgCWtnUlCz-uOPRxhIYYIe5NDQozoBbrFPGFiXfw8cuRG9R9pK4aVvzTDiEx7YDaYDF8-aCRJTFS6nrRkgjsQuNmWKwrNMQ2DIc',
-          likes: 6,
-          dislikes: 0
-        },
-        {
-          name: 'Can Yıldız',
-          date: '2023-03-20',
-          rating: 4,
-          comment: 'Ürün çeşitliliği ve kalite açısından beklentilerimizi karşıladı.',
-          avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBS-v2q4iEPq_bKTqEp_5FnpPE7MMZeDH0MeTomJxGI7j9N92K6pTrOMKO4PuW9uZliN3rQmmrRm3dLvl0_oOuSSJuO95JjarHhjDXxuxPNIVct41y8glkHk0vZCbvcthqwBeBC8i1-aCJxX4pr2tQcAX6NRwX6NJ61aQBirYg2M9SOaheuB9YY_Sx-zivKZF1ez9aSkxdekYUkuRctsh7vBhFyVDSgai7yRA0KeBPPY9cPcubbgXuWyEWBkWTJsz5CqcuS5gAUte4',
-          likes: 3,
-          dislikes: 1
-        }
-      ],
-      socialMedia: {
-        twitter: '#',
-        facebook: '#',
-        instagram: '#'
-      }
+    };
+
+    loadFirma();
+  }, [id]);
+
+  // Profil fotoğrafı URL'si oluştur
+  const getProfilFotoUrl = (fotoUrl?: string | null) => {
+    if (!fotoUrl) return null;
+    
+    if (fotoUrl.startsWith('http://') || fotoUrl.startsWith('https://')) {
+      return fotoUrl;
     }
+    
+    const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    const baseUrl = apiBaseUrl.replace('/api', '');
+    
+    if (fotoUrl.startsWith('/')) {
+      return `${baseUrl}${fotoUrl}`;
+    }
+    
+    return `${baseUrl}/api/documents/file/${fotoUrl}`;
   };
 
-  // Varsayılan firma verisi
-  const defaultFirm = {
-    name: 'BioEnerji A.Ş.',
-    sector: 'Enerji',
-    city: 'Ankara',
-    district: 'Çankaya',
-    image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCJux5fXj_K4jD4vHtF0CU64CB5vu_kgDjGtl0pUPIU_AoVAWPbJQiUnQYB-txIuUTOoe2T9fA7hbkVLnW3FCTu4nUbgTyu_MWt5hyK3M73qSU3hCtHCZ6JfeChWD-RLs0dPMfOLUbR5kbZAK0llRVuAdy37Qq6nw5e9adueks-w8Ayo_woBikptdX9bSwFY7YmzLz0IttwY6-ENN1Zwxzh2lge0u9ZEghHvUAPEM5IdNCqeF9vaagr6zMxwOZFXQ5IUlXWNfmEou4',
-    address: 'Çankaya Mah. Enerji Sok. No: 123, Çankaya, Ankara, Türkiye',
-    phone: '+90 312 123 45 67',
-    email: 'info@bioenerji.com.tr',
-    website: 'www.bioenerji.com.tr',
-    verified: true,
-    description: 'Tarımsal atıkların ve ürünlerin verimli değerlendirilmesi için doğrulanmış çiftlikler ve firmaları bir araya getiren platform.',
-    certificates: [
-      'ISO 9001 Kalite Yönetim Sistemi',
-      'ISO 14001 Çevre Yönetim Sistemi'
-    ],
-    services: 'Tarımsal atıkların geri dönüşümü, organik gübre üretimi, biyogaz üretimi ve tarımsal danışmanlık hizmetleri',
-    reviews: [
-      {
-        name: 'Ayşe Yılmaz',
-        date: '2023-01-15',
-        rating: 5,
-        comment: 'AgriConnect ile çalışmak çok verimli oldu. Atıklarımızı değerlendirerek hem çevreye katkı sağladık hem de ek gelir elde ettik.',
-        avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAeoGO2yvDVE3kZoPXTGMyDCvX2PJaJOdkLLr9Mr0oEeLDJmWoT_gsRI6TmSNZCHI0oFtpKK2Nidcg7ozVTcNntCjPIwTALvLsoMJ-hgkIBvfw5rNFfeEF8IaFwrHnP-xwWfrrMlbzJFOn0bTkKzhggFx-PCFd9AX3ao9pR09gnGgCWtnUlCz-uOPRxhIYYIe5NDQozoBbrFPGFiXfw8cuRG9R9pK4aVvzTDiEx7YDaYDF8-aCRJTFS6nrRkgjsQuNmWKwrNMQ2DIc',
-        likes: 3,
-        dislikes: 0
-      },
-      {
-        name: 'Mehmet Demir',
-        date: '2022-12-20',
-        rating: 4,
-        comment: 'Hizmetlerinden memnun kaldık. Danışmanlık hizmetleri sayesinde üretim süreçlerimizi iyileştirdik.',
-        avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBS-v2q4iEPq_bKTqEp_5FnpPE7MMZeDH0MeTomJxGI7j9N92K6pTrOMKO4PuW9uZliN3rQmmrRm3dLvl0_oOuSSJuO95JjarHhjDXxuxPNIVct41y8glkHk0vZCbvcthqwBeBC8i1-aCJxX4pr2tQcAX6NRwX6NJ61aQBirYg2M9SOaheuB9YY_Sx-zivKZF1ez9aSkxdekYUkuRctsh7vBhFyVDSgai7yRA0KeBPPY9cPcubbgXuWyEWBkWTJsz5CqcuS5gAUte4',
-        likes: 2,
-        dislikes: 1
-      }
-    ],
-    socialMedia: {
-      twitter: '#',
-      facebook: '#',
-      instagram: '#'
-    }
+  // Firma adından baş harfleri al
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(word => word.charAt(0))
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
   };
 
-  const firm = id ? firms[id] || defaultFirm : defaultFirm;
+  // Loading state
+  if (loading) {
+    return (
+      <div className="bg-background-light dark:bg-background-dark font-display text-gray-800 dark:text-gray-200 min-h-screen flex flex-col">
+        <FrmNavbar />
+        <main className="flex-1 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12 pt-24">
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-subtle-light dark:text-subtle-dark">Firma bilgileri yükleniyor...</p>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error || !firma) {
+    return (
+      <div className="bg-background-light dark:bg-background-dark font-display text-gray-800 dark:text-gray-200 min-h-screen flex flex-col">
+        <FrmNavbar />
+        <main className="flex-1 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12 pt-24">
+          <button
+            onClick={() => navigate('/firmalar')}
+            className="mb-6 inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
+          >
+            <span className="material-symbols-outlined text-base">arrow_back</span>
+            <span>Firmalara Dön</span>
+          </button>
+          
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-8 text-center">
+            <span className="material-symbols-outlined text-5xl text-red-500 mb-4 block">error</span>
+            <h2 className="text-xl font-semibold text-red-800 dark:text-red-200 mb-2">
+              {error || 'Firma Bulunamadı'}
+            </h2>
+            <p className="text-red-700 dark:text-red-300 mb-6">
+              Aradığınız firma mevcut değil veya bir hata oluştu.
+            </p>
+            <button
+              onClick={() => navigate('/firmalar')}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors font-medium"
+            >
+              <span className="material-symbols-outlined">list</span>
+              Firma Listesine Git
+            </button>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // Harita için firma verisi
+  const mapFirma = {
+    id: firma.id,
+    ad: firma.ad,
+    konum: firma.sehir || firma.adres || '',
+    sektor: firma.sektor,
+    telefon: firma.telefon,
+    email: firma.email,
+    dogrulandi: firma.dogrulandi
+  };
 
   return (
     <div className="bg-background-light dark:bg-background-dark font-display text-gray-800 dark:text-gray-200 min-h-screen flex flex-col">
       <FrmNavbar />
-      <main className="flex-1 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <main className="flex-1 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12 pt-24">
         {/* Geri Dön Butonu */}
         <button
           onClick={() => navigate('/firmalar')}
@@ -256,153 +156,244 @@ function FirmaDetay() {
             <div className="p-6 bg-white dark:bg-gray-900/50 rounded-xl shadow-sm">
               <div className="flex flex-col items-center text-center">
                 <div className="relative mb-4">
-                  <div
-                    className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-32"
-                    style={{backgroundImage: `url("${firm.image}")`}}
-                  ></div>
-                  {firm.verified && (
-                    <div className="absolute -bottom-1 -right-1 bg-primary text-white rounded-full p-1.5">
+                  {firma.profilFoto ? (
+                    <img
+                      src={getProfilFotoUrl(firma.profilFoto) || ''}
+                      alt={firma.ad}
+                      className="w-32 h-32 rounded-full object-cover border-4 border-primary/20"
+                      crossOrigin="anonymous"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        const parent = e.currentTarget.parentElement;
+                        if (parent) {
+                          const fallback = parent.querySelector('.fallback-avatar');
+                          if (fallback) (fallback as HTMLElement).style.display = 'flex';
+                        }
+                      }}
+                    />
+                  ) : null}
+                  <div 
+                    className={`fallback-avatar w-32 h-32 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center border-4 border-primary/20 ${firma.profilFoto ? 'hidden' : ''}`}
+                    style={{ display: firma.profilFoto ? 'none' : 'flex' }}
+                  >
+                    <span className="text-4xl font-bold text-white">
+                      {getInitials(firma.ad)}
+                    </span>
+                  </div>
+                  {firma.dogrulandi && (
+                    <div className="absolute -bottom-1 -right-1 bg-primary text-white rounded-full p-1.5 shadow-lg">
                       <span className="material-symbols-outlined !text-base">verified</span>
                     </div>
                   )}
                 </div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{firm.name}</h1>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{firm.sector}</p>
-                {firm.verified && (
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{firma.ad}</h1>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{firma.sektor}</p>
+                {firma.dogrulandi && (
                   <p className="text-sm font-medium text-primary mt-1">Doğrulanmış Firma</p>
+                )}
+                {firma.sehir && (
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm">location_on</span>
+                    {firma.ilce ? `${firma.ilce}, ${firma.sehir}` : firma.sehir}
+                  </p>
                 )}
               </div>
               <div className="mt-6 flex justify-center gap-2">
-                <button className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:focus:ring-offset-background-dark">
-                  <span className="material-symbols-outlined">chat_bubble</span> İletişime Geç
-                </button>
-                <button className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-gray-200 dark:bg-gray-800 px-4 py-2.5 text-sm font-semibold text-gray-800 dark:text-white shadow-sm hover:bg-gray-300 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 dark:focus:ring-offset-background-dark">
-                  <span className="material-symbols-outlined">shopping_cart</span> Ürünleri Gör
-                </button>
+                {firma.email && (
+                  <a 
+                    href={`mailto:${firma.email}`}
+                    className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:focus:ring-offset-background-dark"
+                  >
+                    <span className="material-symbols-outlined">mail</span> E-posta Gönder
+                  </a>
+                )}
+                {firma.telefon && (
+                  <a 
+                    href={`tel:${firma.telefon}`}
+                    className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-gray-200 dark:bg-gray-800 px-4 py-2.5 text-sm font-semibold text-gray-800 dark:text-white shadow-sm hover:bg-gray-300 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 dark:focus:ring-offset-background-dark"
+                  >
+                    <span className="material-symbols-outlined">call</span> Ara
+                  </a>
+                )}
               </div>
             </div>
+
             {/* Firma Bilgileri */}
             <div className="p-6 bg-white dark:bg-gray-900/50 rounded-xl shadow-sm">
               <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Firma Bilgileri</h2>
               <ul className="space-y-4 text-sm">
+                {firma.adres && (
                 <li className="flex items-start gap-3">
                   <span className="material-symbols-outlined text-primary mt-0.5">location_on</span>
                   <div>
                     <p className="font-medium text-gray-600 dark:text-gray-400">Adres</p>
-                    <p className="text-gray-800 dark:text-gray-200">{firm.address}</p>
+                      <p className="text-gray-800 dark:text-gray-200">{firma.adres}</p>
                   </div>
                 </li>
+                )}
+                {firma.telefon && (
                 <li className="flex items-start gap-3">
                   <span className="material-symbols-outlined text-primary mt-0.5">call</span>
                   <div>
-                    <p className="font-medium text-gray-600 dark:text-gray-400">İletişim</p>
-                    <p className="text-gray-800 dark:text-gray-200">{firm.phone}</p>
+                      <p className="font-medium text-gray-600 dark:text-gray-400">Telefon</p>
+                      <p className="text-gray-800 dark:text-gray-200">{firma.telefon}</p>
                   </div>
                 </li>
+                )}
+                {firma.email && (
                 <li className="flex items-start gap-3">
                   <span className="material-symbols-outlined text-primary mt-0.5">email</span>
                   <div>
                     <p className="font-medium text-gray-600 dark:text-gray-400">E-posta</p>
-                    <p className="text-gray-800 dark:text-gray-200">{firm.email}</p>
+                      <p className="text-gray-800 dark:text-gray-200">{firma.email}</p>
                   </div>
                 </li>
+                )}
+                {firma.kurulusYili && (
                 <li className="flex items-start gap-3">
-                  <span className="material-symbols-outlined text-primary mt-0.5">language</span>
+                    <span className="material-symbols-outlined text-primary mt-0.5">calendar_today</span>
                   <div>
-                    <p className="font-medium text-gray-600 dark:text-gray-400">Web Sitesi</p>
-                    <a className="text-primary hover:underline" href={`https://${firm.website}`} target="_blank" rel="noopener noreferrer">{firm.website}</a>
+                      <p className="font-medium text-gray-600 dark:text-gray-400">Kuruluş Yılı</p>
+                      <p className="text-gray-800 dark:text-gray-200">{firma.kurulusYili}</p>
                   </div>
                 </li>
+                )}
+                {firma.calisanSayisi && (
                 <li className="flex items-start gap-3">
-                  <span className="material-symbols-outlined text-primary mt-0.5">group</span>
+                    <span className="material-symbols-outlined text-primary mt-0.5">groups</span>
                   <div>
-                    <p className="font-medium text-gray-600 dark:text-gray-400">Sosyal Medya</p>
-                    <div className="flex gap-2 mt-1">
-                      <a className="text-gray-500 dark:text-gray-400 hover:text-primary" href={firm.socialMedia.twitter}>Twitter</a>
-                      <a className="text-gray-500 dark:text-gray-400 hover:text-primary" href={firm.socialMedia.facebook}>Facebook</a>
-                      <a className="text-gray-500 dark:text-gray-400 hover:text-primary" href={firm.socialMedia.instagram}>Instagram</a>
+                      <p className="font-medium text-gray-600 dark:text-gray-400">Çalışan Sayısı</p>
+                      <p className="text-gray-800 dark:text-gray-200">{firma.calisanSayisi}</p>
                     </div>
+                  </li>
+                )}
+                {firma.yetkili && (firma.yetkili.ad || firma.yetkili.soyad) && (
+                  <li className="flex items-start gap-3">
+                    <span className="material-symbols-outlined text-primary mt-0.5">person</span>
+                    <div>
+                      <p className="font-medium text-gray-600 dark:text-gray-400">Yetkili Kişi</p>
+                      <p className="text-gray-800 dark:text-gray-200">
+                        {[firma.yetkili.ad, firma.yetkili.soyad].filter(Boolean).join(' ')}
+                      </p>
                   </div>
                 </li>
+                )}
               </ul>
             </div>
           </div>
+
           <div className="md:col-span-2 space-y-8">
-            {/* Ürünler ve Hizmetler */}
+            {/* Harita */}
             <div className="p-6 bg-white dark:bg-gray-900/50 rounded-xl shadow-sm">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Ürünler ve Hizmetler</h2>
-              <p className="text-sm text-gray-600 dark:text-gray-300 mb-3">
-                {firm.description}
-              </p>
-              <p className="text-sm text-gray-600 dark:text-gray-300">
-                <strong>Hizmetler:</strong> {firm.services}
-              </p>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Konum</h2>
+              <div className="h-64 rounded-lg overflow-hidden">
+                <TomTomMap
+                  firmalar={[mapFirma]}
+                  selectedFirma={mapFirma}
+                  className="h-full"
+                />
+              </div>
+              {firma.adres && (
+                <div className="mt-3 flex items-center justify-between">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">{firma.adres}</p>
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(firma.adres)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                  >
+                    <span className="material-symbols-outlined text-base">directions</span>
+                    Yol Tarifi Al
+                  </a>
+                </div>
+              )}
             </div>
+
+            {/* Hakkında */}
+            {firma.aciklama && (
+              <div className="p-6 bg-white dark:bg-gray-900/50 rounded-xl shadow-sm">
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Hakkında</h2>
+                <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+                  {firma.aciklama}
+                </p>
+              </div>
+            )}
+
             {/* Sertifikalar */}
+            {firma.sertifikalar && firma.sertifikalar.length > 0 && (
             <div className="p-6 bg-white dark:bg-gray-900/50 rounded-xl shadow-sm">
               <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Sertifikalar</h2>
               <ul className="space-y-3">
-                {firm.certificates.map((cert: string, idx: number) => (
-                  <li key={idx} className="flex items-center gap-4">
+                  {firma.sertifikalar.map((sertifika) => (
+                    <li key={sertifika.id} className="flex items-center gap-4">
                     <div className="flex items-center justify-center rounded-lg bg-primary/10 dark:bg-primary/20 shrink-0 size-10">
                       <span className="material-symbols-outlined text-primary">workspace_premium</span>
                     </div>
-                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{cert}</p>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{sertifika.ad}</p>
+                        {sertifika.verenKurum && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {sertifika.verenKurum}
+                          </p>
+                        )}
+                        {sertifika.baslangicTarihi && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {new Date(sertifika.baslangicTarihi).toLocaleDateString('tr-TR')}
+                            {sertifika.suresiz ? ' - Süresiz' : sertifika.bitisTarihi ? ` - ${new Date(sertifika.bitisTarihi).toLocaleDateString('tr-TR')}` : ''}
+                          </p>
+                        )}
+                      </div>
+                      {sertifika.dosyaUrl && (
+                        <a
+                          href={`${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'}/api/documents/file/${sertifika.dosyaUrl}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                          title="Sertifikayı Görüntüle"
+                        >
+                          <span className="material-symbols-outlined text-base">visibility</span>
+                        </a>
+                      )}
                   </li>
                 ))}
               </ul>
             </div>
-            {/* Referanslar */}
-            {firm.reviews && firm.reviews.length > 0 && (
+            )}
+
+            {/* Ek Bilgiler */}
               <div className="p-6 bg-white dark:bg-gray-900/50 rounded-xl shadow-sm">
-                <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-6">Referanslar ({firm.reviews.length})</h2>
-                <div className="space-y-8">
-                  {firm.reviews.map((review: any, idx: number) => (
-                    <div key={idx}>
-                      {idx > 0 && <div className="border-t border-gray-200 dark:border-gray-800 mb-8"></div>}
-                      <div className="flex flex-col gap-3">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10"
-                            style={{backgroundImage: `url("${review.avatar}")`}}
-                          ></div>
-                          <div className="flex-1">
-                            <p className="text-sm font-semibold text-gray-900 dark:text-white">{review.name}</p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">{review.date}</p>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Ek Bilgiler</h2>
+              <div className="grid grid-cols-2 gap-4">
+                {firma.vergiNo && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Vergi No</p>
+                    <p className="text-sm text-gray-800 dark:text-gray-200">{firma.vergiNo}</p>
+                  </div>
+                )}
+                {firma.ticaretSicilNo && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Ticaret Sicil No</p>
+                    <p className="text-sm text-gray-800 dark:text-gray-200">{firma.ticaretSicilNo}</p>
                           </div>
-                          <div className="flex items-center gap-0.5 text-primary">
-                            {Array(5)
-                              .fill(0)
-                              .map((_, i) => (
-                                <span 
-                                  key={i} 
-                                  className="material-symbols-outlined !text-base" 
-                                  style={{fontVariationSettings: i < review.rating ? "'FILL' 1" : undefined}}
-                                >
-                                  star
-                                </span>
-                              ))}
+                )}
+                {firma.kayitTarihi && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Kayıt Tarihi</p>
+                    <p className="text-sm text-gray-800 dark:text-gray-200">
+                      {new Date(firma.kayitTarihi).toLocaleDateString('tr-TR')}
+                    </p>
                           </div>
+                )}
+                {firma.sonGuncelleme && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Son Güncelleme</p>
+                    <p className="text-sm text-gray-800 dark:text-gray-200">
+                      {new Date(firma.sonGuncelleme).toLocaleDateString('tr-TR')}
+                    </p>
                         </div>
-                        <p className="text-sm text-gray-600 dark:text-gray-300">"{review.comment}"</p>
-                        <div className="flex gap-4 text-gray-500 dark:text-gray-400">
-                          <button className="flex items-center gap-1.5 text-xs hover:text-primary">
-                            <span className="material-symbols-outlined !text-base">thumb_up</span>
-                            <span>{review.likes}</span>
-                          </button>
-                          {review.dislikes > 0 && (
-                            <button className="flex items-center gap-1.5 text-xs hover:text-primary">
-                              <span className="material-symbols-outlined !text-base">thumb_down</span>
-                              <span>{review.dislikes}</span>
-                            </button>
                           )}
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </main>
@@ -410,4 +401,4 @@ function FirmaDetay() {
   );
 }
 
-export default FirmaDetay;
+export default FirmaDetayPage;

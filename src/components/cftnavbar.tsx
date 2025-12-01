@@ -1,12 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 
-type CftNavbarProps = {
-  logoUrl?: string;
-  farmName?: string;
-};
-
-function CftNavbar({ logoUrl, farmName }: CftNavbarProps = {}) {
+function CftNavbar() {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false);
   const navigate = useNavigate();
@@ -74,37 +69,10 @@ function CftNavbar({ logoUrl, farmName }: CftNavbarProps = {}) {
         <div className="flex items-center justify-between h-16 px-4">
           <div className="flex items-center gap-8">
             <Link className="flex items-center gap-2 text-xl font-bold text-content-light dark:text-content-dark" to={kullaniciTipi === 'ciftci' ? '/ciftlik/panel' : '/firma/panel'}>
-              {logoUrl ? (
-                <div className="h-8 w-8 rounded-full overflow-hidden flex items-center justify-center bg-primary/10 border border-primary/30">
-                  <img 
-                    src={logoUrl} 
-                    alt={farmName || 'Çiftlik Logosu'}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      // Resim yüklenemezse default ikonu göster
-                      e.currentTarget.style.display = 'none';
-                      const parent = e.currentTarget.parentElement;
-                      if (parent && !parent.querySelector('svg')) {
-                        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                        svg.setAttribute('class', 'h-6 w-6 text-primary');
-                        svg.setAttribute('fill', 'none');
-                        svg.setAttribute('viewBox', '0 0 48 48');
-                        svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-                        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                        path.setAttribute('d', 'M4 4H17.3334V17.3334H30.6666V30.6666H44V44H4V4Z');
-                        path.setAttribute('fill', 'currentColor');
-                        svg.appendChild(path);
-                        parent.appendChild(svg);
-                      }
-                    }}
-                  />
-                </div>
-              ) : (
-                <svg className="h-6 w-6 text-primary" fill="none" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M4 4H17.3334V17.3334H30.6666V30.6666H44V44H4V4Z" fill="currentColor"></path>
-                </svg>
-              )}
-              {farmName || 'Yeşil-Eksen'}
+              <svg className="h-6 w-6 text-primary" fill="none" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                <path d="M4 4H17.3334V17.3334H30.6666V30.6666H44V44H4V4Z" fill="currentColor"></path>
+              </svg>
+              Yeşil-Eksen
             </Link>
             <nav className="hidden md:flex items-center gap-6">
               {kullaniciTipi === 'ciftci' ? (
@@ -296,28 +264,10 @@ function CftNavbar({ logoUrl, farmName }: CftNavbarProps = {}) {
                 type="button"
                 onClick={() => setIsProfileMenuOpen((prev) => !prev)}
               >
-                <div className="w-8 h-8 rounded-full bg-primary/20 dark:bg-primary/30 flex items-center justify-center overflow-hidden">
-                  {logoUrl && kullaniciTipi === 'ciftci' ? (
-                    <img 
-                      src={logoUrl} 
-                      alt={farmName || kullaniciAdi}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        // Resim yüklenemezse default ikonu göster
-                        e.currentTarget.style.display = 'none';
-                        const parent = e.currentTarget.parentElement;
-                        if (parent && !parent.querySelector('.material-symbols-outlined')) {
-                          const icon = document.createElement('span');
-                          icon.className = `material-symbols-outlined text-primary text-base ${kullaniciTipi === 'ciftci' ? 'agriculture' : 'business'}`;
-                          parent.appendChild(icon);
-                        }
-                      }}
-                    />
-                  ) : (
-                    <span className={`material-symbols-outlined text-primary text-base ${kullaniciTipi === 'ciftci' ? 'agriculture' : 'business'}`}></span>
-                  )}
+                <div className="w-8 h-8 rounded-full bg-primary/20 dark:bg-primary/30 flex items-center justify-center">
+                  <span className={`material-symbols-outlined text-primary text-base ${kullaniciTipi === 'ciftci' ? 'agriculture' : 'business'}`}></span>
                 </div>
-                <span className="hidden sm:block text-sm font-medium text-content-light dark:text-content-dark">{farmName || kullaniciAdi}</span>
+                <span className="hidden sm:block text-sm font-medium text-content-light dark:text-content-dark">{kullaniciAdi}</span>
                 <span className="material-symbols-outlined text-subtle-light dark:text-subtle-dark text-base">expand_more</span>
               </button>
               {isProfileMenuOpen && (
@@ -328,24 +278,8 @@ function CftNavbar({ logoUrl, farmName }: CftNavbarProps = {}) {
                 >
                   <div className="rounded-lg border border-border-light dark:border-border-dark bg-background-light dark:bg-background-dark shadow-lg py-2 pointer-events-auto">
                     <div className="px-4 py-2 border-b border-border-light dark:border-border-dark pointer-events-auto">
-                      <div className="flex items-center gap-2 mb-1">
-                        {logoUrl && kullaniciTipi === 'ciftci' && (
-                          <div className="w-8 h-8 rounded-full bg-primary/20 dark:bg-primary/30 flex items-center justify-center overflow-hidden flex-shrink-0">
-                            <img 
-                              src={logoUrl} 
-                              alt={farmName || kullaniciAdi}
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none';
-                              }}
-                            />
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-content-light dark:text-content-dark">{farmName || kullaniciAdi}</p>
-                          <p className="text-xs text-subtle-light dark:text-subtle-dark">{kullaniciTipi === 'ciftci' ? 'Çiftlik Hesabı' : 'Firma Hesabı'}</p>
-                        </div>
-                      </div>
+                      <p className="text-sm font-semibold text-content-light dark:text-content-dark">{kullaniciAdi}</p>
+                      <p className="text-xs text-subtle-light dark:text-subtle-dark">{kullaniciTipi === 'ciftci' ? 'Çiftlik Hesabı' : 'Firma Hesabı'}</p>
                     </div>
                     <Link
                       className="block px-4 py-2 text-sm text-subtle-light dark:text-subtle-dark hover:bg-primary/10 dark:hover:bg-primary/20 hover:text-primary dark:hover:text-primary transition-colors cursor-pointer pointer-events-auto"

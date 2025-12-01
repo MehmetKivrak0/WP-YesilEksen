@@ -28,7 +28,6 @@ import CiftciPanel from './pages/ciftlik/ciftci_panel.tsx'
 import Urunlerim from './pages/ciftlik/urunlerim.tsx'
 import CiftciSatisGecmisi from './pages/ciftlik/ciftci_satis_gecmisi.tsx'
 import CiftlikProfil from './pages/ciftlik/ciftlik_profil.tsx'
-import MissingDocumentsPage from './pages/ciftlik/MissingDocumentsPage.tsx'
 import FarmListPage from './pages/admin/ziraat/farms/FarmListPage.tsx'
 import Atiklar from './pages/atiklar.tsx'
 import AtikEkle from './pages/ciftlik/atik_ekle.tsx'
@@ -62,7 +61,6 @@ function App() {
         <Route path="/ciftlikler" element={<Ciftlikler />} />
         <Route path="/ciftlik/detay/:id" element={<CiftlikDetay />} />
         <Route path="/ciftlik/panel" element={<CiftciPanel />} />
-        <Route path="/ciftlik/eksik-belgeler" element={<MissingDocumentsPage />} />
         <Route path="/ciftlik/urunlerim" element={<Urunlerim />} />
         <Route path="/ciftlik/urun-durum" element={<UrunDurum />} />
         <Route path="/ciftlik/satis-gecmisi" element={<CiftciSatisGecmisi />} />

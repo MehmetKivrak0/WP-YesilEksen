@@ -347,12 +347,34 @@ const getProductApplications = async (req, res) => {
                 '1-5' as "employeeCount",
                 k.eposta as email,
                 u.basvuru_tarihi as "applicationDate",
-                '' as "taxNumber",
-                COALESCE(u.notlar, '') as description
+                COALESCE(c.vergi_no, '') as "taxNumber",
+                COALESCE(u.notlar, '') as description,
+                COALESCE(
+                    json_agg(
+                        json_build_object(
+                            'name', COALESCE(bt.ad, b.ad, 'Belge'),
+                            'status', CASE 
+                                WHEN b.durum = 'onaylandi' THEN 'Onaylandı'
+                                WHEN b.durum = 'reddedildi' THEN 'Reddedildi'
+                                WHEN b.durum = 'eksik' THEN 'Eksik'
+                                ELSE 'Beklemede'
+                            END,
+                            'url', b.dosya_yolu,
+                            'belgeId', b.id::text,
+                            'farmerNote', COALESCE(b.kullanici_notu, ''),
+                            'adminNote', COALESCE(b.yonetici_notu, '')
+                        ) ORDER BY COALESCE(bt.ad, b.ad, '')
+                    ) FILTER (WHERE b.id IS NOT NULL),
+                    '[]'::json
+                ) as documents
             FROM urun_basvurulari u
             JOIN ciftlikler c ON u.ciftlik_id = c.id
             JOIN kullanicilar k ON c.kullanici_id = k.id
+            LEFT JOIN belgeler b ON b.basvuru_id::text = u.id::text AND b.basvuru_tipi = 'urun_basvurusu'
+            LEFT JOIN belge_turleri bt ON b.belge_turu_id = bt.id AND bt.id IS NOT NULL
             ${whereClause}
+            GROUP BY u.id, u.urun_adi, u.basvuran_adi, u.durum, u.guncelleme, u.basvuru_tarihi, 
+                     u.notlar, c.aciklama, c.olusturma, c.vergi_no, k.eposta
             ORDER BY u.basvuru_tarihi DESC
             LIMIT $${limitParamIndex} OFFSET $${offsetParamIndex}
         `;

@@ -1,7 +1,9 @@
-import { useEffect } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState, useCallback } from "react";
+import { Link, useLocation } from "react-router-dom";
 
 import SanayiNavbar from "./components/SanayiNavbar";
+import { sanayiService } from "../../../services/sanayiService";
+import type { DashboardStats, CompanyApplication } from "../../../services/sanayiService";
 
 const MATERIAL_SYMBOLS_STYLES = `
   .material-symbols-outlined {
@@ -21,8 +23,99 @@ const MATERIAL_SYMBOLS_FONT_ID = "material-symbols-font-link";
 const STYLE_ELEMENT_ID = "sanayi-dsah-inline-style";
 
 const SanayiIdsahPage = () => {
+  const location = useLocation();
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
+  const [pendingCompanies, setPendingCompanies] = useState<CompanyApplication[]>([]);
+  const [memberCompanies, setMemberCompanies] = useState<any[]>([]);
+  const [activityLog, setActivityLog] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadDashboardData = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Paralel olarak tüm verileri yükle
+      const [statsRes, companiesRes, registeredRes, activityRes] = await Promise.all([
+        sanayiService.getDashboardStats().catch((err) => {
+          console.error('Dashboard stats hatası:', err);
+          return { success: false, stats: { productSummary: { pending: 0, approved: 0, revision: 0 }, companySummary: { newApplications: 0, inspections: 0, approved: 0, rejected: 0 }, totalCompanies: 0, totalProducts: 0 } };
+        }),
+        sanayiService.getCompanyApplications({ limit: 3 }).catch((err) => {
+          console.error('Company applications hatası:', err);
+          return { success: false, applications: [], pagination: {} };
+        }),
+        sanayiService.getRegisteredCompanies({ limit: 3 }).catch((err) => {
+          console.error('Registered companies hatası:', err);
+          return { success: true, companies: [], pagination: {} };
+        }),
+        sanayiService.getActivityLog({ limit: 5 }).catch((err) => {
+          console.error('Activity log hatası:', err);
+          return { success: true, activities: [], pagination: {} };
+        })
+      ]);
+
+      if (statsRes.stats) {
+        setDashboardStats(statsRes.stats);
+      }
+      setPendingCompanies(companiesRes.applications || []);
+      
+      // API'den gelen firmaları frontend formatına map et
+      if (registeredRes.success && registeredRes.companies) {
+        const mappedCompanies = registeredRes.companies.map((company: any) => {
+          // Status mapping: backend'den gelen durum değerlerini frontend formatına çevir
+          let status = 'Beklemede';
+          if (company.status === 'aktif' || company.status === 'onaylandi') {
+            status = 'Aktif';
+          } else if (company.status === 'beklemede') {
+            status = 'Beklemede';
+          } else {
+            status = company.status || 'Beklemede';
+          }
+          
+          return {
+            id: company.id, // Şirket ID'sini de ekle (güncelleme için gerekli)
+            name: company.companyName || company.name || 'İsimsiz',
+            sector: company.sector || 'Sektör Bilgisi Yok', // Backend'den gelen sektör bilgisini kullan
+            joinedAt: company.registrationDate 
+              ? new Date(company.registrationDate).toISOString().split('T')[0]
+              : new Date().toISOString().split('T')[0],
+            status: status,
+            statusClass: status === 'Aktif' 
+              ? "text-emerald-600 dark:text-emerald-300"
+              : "text-amber-600 dark:text-amber-300"
+          };
+        });
+        setMemberCompanies(mappedCompanies);
+      } else {
+        // API'den veri gelmese bile boş array set et
+        setMemberCompanies([]);
+      }
+
+      // Aktivite loglarını map et
+      if (activityRes.success && activityRes.activities && activityRes.activities.length > 0) {
+        const mappedActivities = activityRes.activities.map((activity: any) => ({
+          id: activity.id || Date.now(),
+          action: activity.description || activity.type || 'İşlem',
+          company: activity.details?.varlik_id || 'Bilinmeyen Firma',
+          user: activity.user || 'Sistem',
+          timestamp: activity.timestamp 
+            ? new Date(activity.timestamp).toLocaleString('tr-TR')
+            : new Date().toLocaleString('tr-TR'),
+          type: activity.type === 'onay' ? 'approval' : 
+                activity.type === 'red' ? 'rejection' : 
+                activity.type === 'guncelleme' ? 'update' : 'delete'
+        }));
+        setActivityLog(mappedActivities);
+      }
+    } catch (err) {
+      console.error('Dashboard veri yükleme hatası:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     document.title = "Şirket Yönetimi - AgriConnect";
+    loadDashboardData();
 
     let fontLink = document.getElementById(
       MATERIAL_SYMBOLS_FONT_ID,
@@ -60,6 +153,14 @@ const SanayiIdsahPage = () => {
     };
   }, []);
 
+  // Sayfa her görüntülendiğinde verileri yenile (şirket güncellemesi sonrası için)
+  useEffect(() => {
+    // Sadece dashboard sayfasındayken ve location değiştiğinde yenile
+    if (location.pathname === '/admin/sanayi') {
+      loadDashboardData();
+    }
+  }, [location.pathname, loadDashboardData]);
+
   const statusBadgeVariants: Record<string, string> = {
     Beklemede:
       "bg-amber-50 text-amber-600 border border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-900",
@@ -71,102 +172,6 @@ const SanayiIdsahPage = () => {
       "bg-emerald-50 text-emerald-600 border border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-900",
   };
 
-  const pendingCompanies = [
-    {
-      id: "P-1024",
-      name: "Eko Enerji A.Ş.",
-      sector: "Yenilenebilir Enerji",
-      submittedAt: "2024-01-18",
-      contact: "info@ekoenerji.com",
-      status: "Beklemede",
-      statusClass: "text-amber-600 dark:text-amber-300",
-    },
-    {
-      id: "P-1025",
-      name: "Anadolu Kimya Ltd.",
-      sector: "Kimya",
-      submittedAt: "2024-01-16",
-      contact: "iletisim@anadolukimya.com",
-      status: "İncelemede",
-      statusClass: "text-blue-600 dark:text-blue-300",
-    },
-    {
-      id: "P-1026",
-      name: "BioTarımsal Çözümler",
-      sector: "Biyoteknoloji",
-      submittedAt: "2024-01-14",
-      contact: "destek@biotarim.com",
-      status: "Eksik Evrak",
-      statusClass: "text-rose-600 dark:text-rose-300",
-    },
-  ];
-
-  const memberCompanies = [
-    {
-      name: "Teknoloji A.Ş.",
-      sector: "Bilgi Teknolojileri",
-      joinedAt: "2024-01-15",
-      status: "Aktif",
-      statusClass: "text-emerald-600 dark:text-emerald-300",
-    },
-    {
-      name: "Gıda Sanayi Ltd.",
-      sector: "Gıda İşleme",
-      joinedAt: "2024-01-10",
-      status: "Beklemede",
-      statusClass: "text-amber-600 dark:text-amber-300",
-    },
-    {
-      name: "Tarım Teknolojileri A.Ş.",
-      sector: "Tarım Teknolojisi",
-      joinedAt: "2024-01-05",
-      status: "Aktif",
-      statusClass: "text-emerald-600 dark:text-emerald-300",
-    },
-  ];
-
-  const activityLog = [
-    {
-      id: 1,
-      action: "Firma Onaylandı",
-      company: "Eko Enerji A.Ş.",
-      user: "Ahmet Yılmaz",
-      timestamp: "2024-01-18 14:30",
-      type: "approval",
-    },
-    {
-      id: 2,
-      action: "Firma Reddedildi",
-      company: "BioTarımsal Çözümler",
-      user: "Mehmet Demir",
-      timestamp: "2024-01-17 10:15",
-      type: "rejection",
-    },
-    {
-      id: 3,
-      action: "Üye Şirket Güncellendi",
-      company: "Teknoloji A.Ş.",
-      user: "Ayşe Kaya",
-      timestamp: "2024-01-16 16:45",
-      type: "update",
-    },
-    {
-      id: 4,
-      action: "Firma Onaylandı",
-      company: "Anadolu Kimya Ltd.",
-      user: "Ahmet Yılmaz",
-      timestamp: "2024-01-15 09:20",
-      type: "approval",
-    },
-    {
-      id: 5,
-      action: "Üye Şirket Silindi",
-      company: "Eski Firma A.Ş.",
-      user: "Mehmet Demir",
-      timestamp: "2024-01-14 11:30",
-      type: "delete",
-    },
-  ];
 
   return (
     <div className="flex min-h-screen flex-col bg-background-light font-display text-content-light dark:bg-background-dark dark:text-content-dark">
@@ -191,7 +196,7 @@ const SanayiIdsahPage = () => {
                 Toplam Üye
               </p>
               <p className="text-2xl font-bold text-content-light dark:text-content-dark">
-                {memberCompanies.length}
+                {loading ? '...' : (dashboardStats?.totalCompanies || memberCompanies.length)}
               </p>
             </div>
 
@@ -200,7 +205,7 @@ const SanayiIdsahPage = () => {
                 Aktif
               </p>
               <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                {memberCompanies.filter((c) => c.status === "Aktif").length}
+                {loading ? '...' : (dashboardStats?.companySummary?.approved || memberCompanies.filter((c) => c.status === "Aktif").length)}
               </p>
             </div>
 
@@ -209,16 +214,16 @@ const SanayiIdsahPage = () => {
                 Beklemede
               </p>
               <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">
-                {memberCompanies.filter((c) => c.status === "Beklemede").length + pendingCompanies.filter((c) => c.status === "Beklemede").length}
+                {loading ? '...' : (dashboardStats?.companySummary?.newApplications ?? 0)}
               </p>
             </div>
 
             <div className="rounded-lg border border-border-light bg-background-light p-4 text-center dark:border-border-dark dark:bg-background-dark">
               <p className="mb-2 text-sm font-medium text-[#2E7D32] dark:text-[#4CAF50]">
-                Bu Ay Eklenen
+                Toplam Ürün
               </p>
               <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                {memberCompanies.filter((c) => new Date(c.joinedAt) >= new Date("2024-01-01")).length}
+                {loading ? '...' : (dashboardStats?.totalProducts || 0)}
               </p>
             </div>
           </div>
@@ -254,7 +259,7 @@ const SanayiIdsahPage = () => {
                     Bekleyen
                   </p>
                   <p className="text-2xl font-semibold text-content-light dark:text-content-dark">
-                    {pendingCompanies.filter((c) => c.status === "Beklemede").length}
+                    {loading ? '...' : (dashboardStats?.companySummary?.newApplications || pendingCompanies.filter((c) => c.status === "beklemede" || c.status === "Beklemede").length)}
                   </p>
                 </div>
                 <div className="rounded-lg border border-border-light p-4 dark:border-border-dark">
@@ -262,7 +267,7 @@ const SanayiIdsahPage = () => {
                     İncelemede
                   </p>
                   <p className="text-2xl font-semibold text-content-light dark:text-content-dark">
-                    {pendingCompanies.filter((c) => c.status === "İncelemede").length}
+                    {loading ? '...' : (dashboardStats?.companySummary?.inspections || pendingCompanies.filter((c) => c.status === "incelemede" || c.status === "İncelemede").length)}
                   </p>
                 </div>
                 <div className="rounded-lg border border-border-light p-4 dark:border-border-dark">
@@ -270,36 +275,48 @@ const SanayiIdsahPage = () => {
                     Toplam
                   </p>
                   <p className="text-2xl font-semibold text-content-light dark:text-content-dark">
-                    {pendingCompanies.length}
+                    {loading ? '...' : ((dashboardStats?.companySummary?.newApplications || 0) + (dashboardStats?.companySummary?.inspections || 0) + (dashboardStats?.companySummary?.approved || 0) || pendingCompanies.length)}
                   </p>
                 </div>
               </div>
-              <div className="rounded-lg border border-border-light dark:border-border-dark">
-                <table className="w-full table-auto">
-                  <thead>
-                    <tr className="text-xs font-semibold uppercase tracking-wider text-subtle-light dark:text-subtle-dark">
-                      <th className="px-4 py-3 text-left">Firma Adı</th>
-                      <th className="px-4 py-3 text-left">Sektör</th>
-                      <th className="px-4 py-3 text-left">Durum</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border-light text-sm dark:divide-border-dark">
-                    {pendingCompanies.slice(0, 3).map((row) => (
-                      <tr key={row.id} className="transition-colors hover:bg-primary/5 dark:hover:bg-primary/10">
-                        <td className="px-4 py-3 font-medium text-content-light dark:text-content-dark">{row.name}</td>
-                        <td className="px-4 py-3 text-subtle-light dark:text-subtle-dark">{row.sector}</td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${statusBadgeVariants[row.status] ?? statusBadgeVariants.Aktif}`}
-                          >
-                            {row.status}
-                          </span>
-                        </td>
+              {loading ? (
+                <div className="py-8 text-center text-subtle-light dark:text-subtle-dark">
+                  Yükleniyor...
+                </div>
+              ) : pendingCompanies.length > 0 ? (
+                <div className="rounded-lg border border-border-light dark:border-border-dark">
+                  <table className="w-full table-auto">
+                    <thead>
+                      <tr className="text-xs font-semibold uppercase tracking-wider text-subtle-light dark:text-subtle-dark">
+                        <th className="px-4 py-3 text-left">Firma Adı</th>
+                        <th className="px-4 py-3 text-left">Sektör</th>
+                        <th className="px-4 py-3 text-left">Durum</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-border-light text-sm dark:divide-border-dark">
+                      {pendingCompanies.slice(0, 3).map((row) => (
+                        <tr key={row.id} className="transition-colors hover:bg-primary/5 dark:hover:bg-primary/10">
+                          <td className="px-4 py-3 font-medium text-content-light dark:text-content-dark">{row.name}</td>
+                          <td className="px-4 py-3 text-subtle-light dark:text-subtle-dark">{row.sector || 'Sektör Yok'}</td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${statusBadgeVariants[row.status] ?? statusBadgeVariants.Aktif}`}
+                            >
+                              {row.status === 'beklemede' ? 'Beklemede' : 
+                               row.status === 'onaylandi' ? 'Onaylandı' : 
+                               row.status === 'reddedildi' ? 'Reddedildi' : row.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="py-8 text-center text-subtle-light dark:text-subtle-dark">
+                  Henüz başvuru bulunmamaktadır.
+                </div>
+              )}
             </div>
 
             {/* Company List */}
@@ -331,7 +348,7 @@ const SanayiIdsahPage = () => {
                     Aktif
                   </p>
                   <p className="text-2xl font-semibold text-content-light dark:text-content-dark">
-                    {memberCompanies.filter((c) => c.status === "Aktif").length}
+                    {loading ? '...' : (dashboardStats?.companySummary?.approved || memberCompanies.filter((c) => c.status === "Aktif").length)}
                   </p>
                 </div>
                 <div className="rounded-lg border border-border-light p-4 dark:border-border-dark">
@@ -339,7 +356,7 @@ const SanayiIdsahPage = () => {
                     Beklemede
                   </p>
                   <p className="text-2xl font-semibold text-content-light dark:text-content-dark">
-                    {memberCompanies.filter((c) => c.status === "Beklemede").length}
+                    {loading ? '...' : (dashboardStats?.companySummary?.newApplications || memberCompanies.filter((c) => c.status === "Beklemede").length)}
                   </p>
                 </div>
                 <div className="rounded-lg border border-border-light p-4 dark:border-border-dark">
@@ -347,36 +364,46 @@ const SanayiIdsahPage = () => {
                     Toplam
                   </p>
                   <p className="text-2xl font-semibold text-content-light dark:text-content-dark">
-                    {memberCompanies.length}
+                    {loading ? '...' : (dashboardStats?.totalCompanies || memberCompanies.length)}
                   </p>
                 </div>
               </div>
-              <div className="rounded-lg border border-border-light dark:border-border-dark">
-                <table className="w-full table-auto">
-                  <thead>
-                    <tr className="text-xs font-semibold uppercase tracking-wider text-subtle-light dark:text-subtle-dark">
-                      <th className="px-4 py-3 text-left">Şirket Adı</th>
-                      <th className="px-4 py-3 text-left">Sektör</th>
-                      <th className="px-4 py-3 text-left">Durum</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border-light text-sm dark:divide-border-dark">
-                    {memberCompanies.slice(0, 3).map((row) => (
-                      <tr key={row.name} className="transition-colors hover:bg-primary/5 dark:hover:bg-primary/10">
-                        <td className="px-4 py-3 font-medium text-content-light dark:text-content-dark">{row.name}</td>
-                        <td className="px-4 py-3 text-subtle-light dark:text-subtle-dark">{row.sector}</td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${statusBadgeVariants[row.status] ?? statusBadgeVariants.Aktif}`}
-                          >
-                            {row.status}
-                          </span>
-                        </td>
+              {loading ? (
+                <div className="py-8 text-center text-subtle-light dark:text-subtle-dark">
+                  Yükleniyor...
+                </div>
+              ) : memberCompanies.length > 0 ? (
+                <div className="rounded-lg border border-border-light dark:border-border-dark">
+                  <table className="w-full table-auto">
+                    <thead>
+                      <tr className="text-xs font-semibold uppercase tracking-wider text-subtle-light dark:text-subtle-dark">
+                        <th className="px-4 py-3 text-left">Şirket Adı</th>
+                        <th className="px-4 py-3 text-left">Sektör</th>
+                        <th className="px-4 py-3 text-left">Durum</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-border-light text-sm dark:divide-border-dark">
+                      {memberCompanies.slice(0, 3).map((row) => (
+                        <tr key={row.name} className="transition-colors hover:bg-primary/5 dark:hover:bg-primary/10">
+                          <td className="px-4 py-3 font-medium text-content-light dark:text-content-dark">{row.name}</td>
+                          <td className="px-4 py-3 text-subtle-light dark:text-subtle-dark">{row.sector}</td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${statusBadgeVariants[row.status] ?? statusBadgeVariants.Aktif}`}
+                            >
+                              {row.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="py-8 text-center text-subtle-light dark:text-subtle-dark">
+                  Henüz kayıtlı firma bulunmamaktadır.
+                </div>
+              )}
             </div>
           </div>
 
@@ -392,7 +419,12 @@ const SanayiIdsahPage = () => {
             </div>
 
             <div className="space-y-4">
-              {activityLog.map((activity) => (
+              {loading ? (
+                <div className="py-8 text-center text-subtle-light dark:text-subtle-dark">
+                  Yükleniyor...
+                </div>
+              ) : activityLog.length > 0 ? (
+                activityLog.map((activity) => (
                 <div
                   key={activity.id}
                   className="flex items-start gap-4 rounded-xl border border-border-light/70 bg-background-light/70 p-4 transition-colors hover:bg-primary/5 dark:border-border-dark/60 dark:bg-background-dark/70 dark:hover:bg-primary/10"
@@ -439,7 +471,12 @@ const SanayiIdsahPage = () => {
                     </div>
                   </div>
                 </div>
-              ))}
+              ))
+              ) : (
+                <div className="py-8 text-center text-subtle-light dark:text-subtle-dark">
+                  Henüz aktivite logu bulunmamaktadır.
+                </div>
+              )}
             </div>
           </div>
 

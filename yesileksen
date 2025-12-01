@@ -1,0 +1,3260 @@
+--
+-- PostgreSQL database dump
+--
+
+\restrict CNMnBd8IUKhgB6AeRxtuavqx8ZdDk11N1NwlPDZGrcivPVbTTvbEJnUw535P59z
+
+-- Dumped from database version 17.6
+-- Dumped by pg_dump version 17.6
+
+-- Started on 2025-11-24 13:09:22
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- TOC entry 2 (class 3079 OID 30189)
+-- Name: pgcrypto; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
+
+
+--
+-- TOC entry 5569 (class 0 OID 0)
+-- Dependencies: 2
+-- Name: EXTENSION pgcrypto; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
+
+
+--
+-- TOC entry 3 (class 3079 OID 30226)
+-- Name: uuid-ossp; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;
+
+
+--
+-- TOC entry 5570 (class 0 OID 0)
+-- Dependencies: 3
+-- Name: EXTENSION "uuid-ossp"; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION "uuid-ossp" IS 'generate universally unique identifiers (UUIDs)';
+
+
+--
+-- TOC entry 949 (class 1247 OID 30238)
+-- Name: durum_tipi; Type: TYPE; Schema: public; Owner: postgres
+--
+
+CREATE TYPE public.durum_tipi AS ENUM (
+    'aktif',
+    'beklemede',
+    'askida',
+    'pasif',
+    'iptal',
+    'silindi'
+);
+
+
+ALTER TYPE public.durum_tipi OWNER TO postgres;
+
+--
+-- TOC entry 952 (class 1247 OID 30252)
+-- Name: rol_tipi; Type: TYPE; Schema: public; Owner: postgres
+--
+
+CREATE TYPE public.rol_tipi AS ENUM (
+    'ciftci',
+    'firma',
+    'ziraat_yoneticisi',
+    'sanayi_yoneticisi',
+    'super_yonetici'
+);
+
+
+ALTER TYPE public.rol_tipi OWNER TO postgres;
+
+--
+-- TOC entry 317 (class 1255 OID 30263)
+-- Name: bildirim_no_olustur(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.bildirim_no_olustur() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    NEW.bildirim_no = 'BLD-' || TO_CHAR(CURRENT_DATE, 'YYYYMMDD') || '-' || LPAD(nextval('seq_bildirim_no')::TEXT, 6, '0');
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.bildirim_no_olustur() OWNER TO postgres;
+
+--
+-- TOC entry 318 (class 1255 OID 30264)
+-- Name: guncelleme_tarihi_func(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.guncelleme_tarihi_func() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    NEW.guncelleme = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.guncelleme_tarihi_func() OWNER TO postgres;
+
+--
+-- TOC entry 319 (class 1255 OID 30265)
+-- Name: siparis_no_olustur(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.siparis_no_olustur() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    NEW.siparis_no = 'SIP-' || TO_CHAR(CURRENT_DATE, 'YYYYMMDD') || '-' || LPAD(nextval('seq_siparis_no')::TEXT, 6, '0');
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.siparis_no_olustur() OWNER TO postgres;
+
+--
+-- TOC entry 320 (class 1255 OID 30266)
+-- Name: uyelik_no_olustur(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.uyelik_no_olustur() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    IF NEW.oda_tipi = 'Ziraat' THEN
+        NEW.uyelik_no = 'ZRT-' || TO_CHAR(CURRENT_DATE, 'YYYY') || '-' || LPAD(nextval('seq_ziraat_uyelik')::TEXT, 6, '0');
+    ELSIF NEW.oda_tipi = 'Sanayi' THEN
+        NEW.uyelik_no = 'SNY-' || TO_CHAR(CURRENT_DATE, 'YYYY') || '-' || LPAD(nextval('seq_sanayi_uyelik')::TEXT, 6, '0');
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.uyelik_no_olustur() OWNER TO postgres;
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- TOC entry 219 (class 1259 OID 30267)
+-- Name: aktivite_metadata; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.aktivite_metadata (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    aktivite_id uuid NOT NULL,
+    anahtar character varying(100) NOT NULL,
+    deger text,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.aktivite_metadata OWNER TO postgres;
+
+--
+-- TOC entry 220 (class 1259 OID 30274)
+-- Name: aktiviteler; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.aktiviteler (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    kullanici_id uuid,
+    tip character varying(50) NOT NULL,
+    varlik_tipi character varying(100),
+    varlik_id uuid,
+    baslik character varying(255) NOT NULL,
+    aciklama text,
+    ip_adresi inet,
+    user_agent text,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.aktiviteler OWNER TO postgres;
+
+--
+-- TOC entry 221 (class 1259 OID 30281)
+-- Name: atik_cevre_etkileri; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.atik_cevre_etkileri (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    atik_islem_id uuid NOT NULL,
+    metrik_adi character varying(100) NOT NULL,
+    metrik_degeri numeric(15,2) NOT NULL,
+    birim character varying(50),
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.atik_cevre_etkileri OWNER TO postgres;
+
+--
+-- TOC entry 222 (class 1259 OID 30286)
+-- Name: atik_islemleri; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.atik_islemleri (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    ciftlik_id uuid NOT NULL,
+    firma_id uuid,
+    urun_id uuid,
+    atik_turu_id uuid NOT NULL,
+    miktar numeric(10,2) NOT NULL,
+    birim_id uuid NOT NULL,
+    islem_tipi character varying(50),
+    islem_tarihi date NOT NULL,
+    fiyat numeric(12,2),
+    aciklama text,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    guncelleme timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.atik_islemleri OWNER TO postgres;
+
+--
+-- TOC entry 223 (class 1259 OID 30294)
+-- Name: atik_turleri; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.atik_turleri (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    kod character varying(20) NOT NULL,
+    ad character varying(100) NOT NULL,
+    aciklama text,
+    aktif boolean DEFAULT true,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.atik_turleri OWNER TO postgres;
+
+--
+-- TOC entry 224 (class 1259 OID 30302)
+-- Name: ayarlar; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.ayarlar (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    anahtar character varying(100) NOT NULL,
+    deger text,
+    deger_tipi character varying(50),
+    aciklama text,
+    herkese_acik boolean DEFAULT false,
+    guncelleyen_id uuid,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    guncelleme timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.ayarlar OWNER TO postgres;
+
+--
+-- TOC entry 225 (class 1259 OID 30311)
+-- Name: belge_turleri; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.belge_turleri (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    kod character varying(50) NOT NULL,
+    ad character varying(100) NOT NULL,
+    aciklama text,
+    gecerlilik_suresi integer,
+    zorunlu boolean DEFAULT true,
+    aktif boolean DEFAULT true,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.belge_turleri OWNER TO postgres;
+
+--
+-- TOC entry 226 (class 1259 OID 30320)
+-- Name: belgeler; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.belgeler (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    kullanici_id uuid NOT NULL,
+    ciftlik_id uuid,
+    firma_id uuid,
+    basvuru_id uuid,
+    basvuru_tipi character varying(50),
+    belge_turu_id uuid NOT NULL,
+    ad character varying(255) NOT NULL,
+    dosya_yolu text NOT NULL,
+    dosya_boyutu integer,
+    dosya_tipi character varying(50),
+    durum character varying(50) DEFAULT 'beklemede'::character varying,
+    kullanici_notu text,
+    yonetici_notu text,
+    red_nedeni text,
+    yuklenme timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    inceleme_tarihi timestamp without time zone,
+    inceleyen_id uuid,
+    gecerlilik_tarihi date,
+    zorunlu boolean DEFAULT true,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    guncelleme timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.belgeler OWNER TO postgres;
+
+--
+-- TOC entry 227 (class 1259 OID 30331)
+-- Name: bildirim_metadata; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.bildirim_metadata (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    bildirim_id uuid NOT NULL,
+    anahtar character varying(100) NOT NULL,
+    deger text,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.bildirim_metadata OWNER TO postgres;
+
+--
+-- TOC entry 228 (class 1259 OID 30338)
+-- Name: bildirim_turleri; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.bildirim_turleri (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    kod character varying(30) NOT NULL,
+    ad character varying(100) NOT NULL,
+    sablon text,
+    aktif boolean DEFAULT true,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.bildirim_turleri OWNER TO postgres;
+
+--
+-- TOC entry 229 (class 1259 OID 30346)
+-- Name: bildirimler; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.bildirimler (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    kullanici_id uuid NOT NULL,
+    bildirim_turu_id uuid NOT NULL,
+    baslik character varying(255) NOT NULL,
+    mesaj text NOT NULL,
+    link character varying(500),
+    okundu boolean DEFAULT false,
+    okunma_tarihi timestamp without time zone,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.bildirimler OWNER TO postgres;
+
+--
+-- TOC entry 230 (class 1259 OID 30354)
+-- Name: birimler; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.birimler (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    kod character varying(10) NOT NULL,
+    ad character varying(50) NOT NULL,
+    sembol character varying(10) NOT NULL,
+    tur character varying(20),
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.birimler OWNER TO postgres;
+
+--
+-- TOC entry 231 (class 1259 OID 30359)
+-- Name: ciftlik_atik_kapasiteleri; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.ciftlik_atik_kapasiteleri (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    ciftlik_id uuid NOT NULL,
+    atik_turu_id uuid NOT NULL,
+    kapasite numeric(10,2) NOT NULL,
+    birim_id uuid NOT NULL,
+    periyot character varying(20),
+    aciklama text,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.ciftlik_atik_kapasiteleri OWNER TO postgres;
+
+--
+-- TOC entry 232 (class 1259 OID 30366)
+-- Name: ciftlik_basvurulari; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.ciftlik_basvurulari (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    ciftlik_id uuid,
+    kullanici_id uuid NOT NULL,
+    ciftlik_adi character varying(200) NOT NULL,
+    sahip_adi character varying(200) NOT NULL,
+    konum character varying(255) NOT NULL,
+    durum character varying(50) DEFAULT 'ilk_inceleme'::character varying,
+    notlar text,
+    red_nedeni text,
+    basvuru_tarihi timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    inceleme_tarihi timestamp without time zone,
+    inceleyen_id uuid,
+    onay_tarihi timestamp without time zone,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    guncelleme timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.ciftlik_basvurulari OWNER TO postgres;
+
+--
+-- TOC entry 233 (class 1259 OID 30376)
+-- Name: ciftlik_sertifikalari; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.ciftlik_sertifikalari (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    ciftlik_id uuid NOT NULL,
+    sertifika_turu_id uuid NOT NULL,
+    sertifika_no character varying(100),
+    veren_kurum character varying(255),
+    baslangic_tarihi date NOT NULL,
+    bitis_tarihi date,
+    suresiz boolean DEFAULT false,
+    dosya_url text,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.ciftlik_sertifikalari OWNER TO postgres;
+
+--
+-- TOC entry 234 (class 1259 OID 30384)
+-- Name: ciftlikler; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.ciftlikler (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    kullanici_id uuid NOT NULL,
+    ad character varying(200) NOT NULL,
+    kayit_no character varying(100),
+    telefon character varying(20),
+    adres text NOT NULL,
+    sehir_id smallint,
+    enlem numeric(10,8),
+    boylam numeric(11,8),
+    alan numeric(10,2),
+    durum public.durum_tipi DEFAULT 'beklemede'::public.durum_tipi,
+    kayit_tarihi date,
+    yillik_gelir numeric(15,2),
+    uretim_kapasitesi numeric(10,2),
+    organik boolean DEFAULT false,
+    iyi_tarim boolean DEFAULT false,
+    aciklama text,
+    website character varying(255),
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    guncelleme timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    silinme timestamp without time zone
+);
+
+
+ALTER TABLE public.ciftlikler OWNER TO postgres;
+
+--
+-- TOC entry 235 (class 1259 OID 30395)
+-- Name: detayli_aktiviteler; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.detayli_aktiviteler (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    kategori character varying(50) NOT NULL,
+    kullanici_id uuid,
+    rol public.rol_tipi,
+    islem_tipi character varying(100) NOT NULL,
+    hedef_tipi character varying(100),
+    hedef_id uuid,
+    onceki_durum character varying(100),
+    sonraki_durum character varying(100),
+    baslik character varying(255) NOT NULL,
+    aciklama text,
+    gonderilen_mesaj text,
+    etkilenen_kullanici_id uuid,
+    ip_adresi inet,
+    user_agent text,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.detayli_aktiviteler OWNER TO postgres;
+
+--
+-- TOC entry 236 (class 1259 OID 30402)
+-- Name: eksik_evraklar; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.eksik_evraklar (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    basvuru_id uuid NOT NULL,
+    basvuru_tipi character varying(50) NOT NULL,
+    kullanici_id uuid NOT NULL,
+    belge_turu_id uuid NOT NULL,
+    eksiklik text,
+    son_tarih date,
+    hatirlatma_gonderildi boolean DEFAULT false,
+    hatirlatma_tarihi timestamp without time zone,
+    tamamlandi boolean DEFAULT false,
+    tamamlanma_tarihi timestamp without time zone,
+    yuklenen_belge_id uuid,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    guncelleme timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.eksik_evraklar OWNER TO postgres;
+
+--
+-- TOC entry 237 (class 1259 OID 30412)
+-- Name: evrak_kontrol; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.evrak_kontrol (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    belge_turu_id uuid NOT NULL,
+    gerekli_durum character varying(100),
+    zorunlu boolean DEFAULT true,
+    aciklama text,
+    ornek_url text,
+    aktif boolean DEFAULT true,
+    sira_no integer,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.evrak_kontrol OWNER TO postgres;
+
+--
+-- TOC entry 238 (class 1259 OID 30421)
+-- Name: firma_basvurulari; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.firma_basvurulari (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    firma_id uuid,
+    kullanici_id uuid NOT NULL,
+    firma_adi character varying(255) NOT NULL,
+    basvuran_adi character varying(200) NOT NULL,
+    sektor_id uuid,
+    durum character varying(50) DEFAULT 'beklemede'::character varying,
+    vergi_no character varying(50),
+    telefon character varying(20),
+    eposta character varying(255),
+    adres text,
+    aciklama text,
+    notlar text,
+    red_nedeni text,
+    basvuru_tarihi timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    inceleme_tarihi timestamp without time zone,
+    inceleyen_id uuid,
+    onay_tarihi timestamp without time zone,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    guncelleme timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.firma_basvurulari OWNER TO postgres;
+
+--
+-- TOC entry 239 (class 1259 OID 30431)
+-- Name: firma_sertifikalari; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.firma_sertifikalari (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    firma_id uuid NOT NULL,
+    sertifika_turu_id uuid NOT NULL,
+    sertifika_no character varying(100),
+    veren_kurum character varying(255),
+    baslangic_tarihi date NOT NULL,
+    bitis_tarihi date,
+    suresiz boolean DEFAULT false,
+    dosya_url text,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.firma_sertifikalari OWNER TO postgres;
+
+--
+-- TOC entry 240 (class 1259 OID 30439)
+-- Name: firmalar; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.firmalar (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    kullanici_id uuid NOT NULL,
+    ad character varying(255) NOT NULL,
+    vergi_no character varying(50) NOT NULL,
+    ticaret_sicil_no character varying(100),
+    telefon character varying(20),
+    adres text NOT NULL,
+    sehir_id smallint,
+    enlem numeric(10,8),
+    boylam numeric(11,8),
+    sektor_id uuid,
+    durum public.durum_tipi DEFAULT 'beklemede'::public.durum_tipi,
+    dogrulandi boolean DEFAULT false,
+    dogrulama_tarihi timestamp without time zone,
+    dogrulayen_id uuid,
+    website character varying(255),
+    aciklama text,
+    calisan_sayisi integer,
+    kurulus_yili integer,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    guncelleme timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    silinme timestamp without time zone
+);
+
+
+ALTER TABLE public.firmalar OWNER TO postgres;
+
+--
+-- TOC entry 241 (class 1259 OID 30449)
+-- Name: kullanici_sosyal; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.kullanici_sosyal (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    kullanici_id uuid NOT NULL,
+    saglayici character varying(20) NOT NULL,
+    saglayici_id character varying(255) NOT NULL,
+    profil_url text,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.kullanici_sosyal OWNER TO postgres;
+
+--
+-- TOC entry 242 (class 1259 OID 30456)
+-- Name: kullanicilar; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.kullanicilar (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    ad character varying(50) NOT NULL,
+    soyad character varying(50) NOT NULL,
+    eposta character varying(255) NOT NULL,
+    sifre_hash character varying(255),
+    telefon character varying(20),
+    rol public.rol_tipi NOT NULL,
+    durum public.durum_tipi DEFAULT 'beklemede'::public.durum_tipi,
+    eposta_dogrulandi boolean DEFAULT false,
+    eposta_dogrulama_token character varying(255),
+    sifre_sifirlama_token character varying(255),
+    sifre_sifirlama_gecerlilik timestamp without time zone,
+    son_giris timestamp without time zone,
+    avatar_url text,
+    sartlar_kabul boolean DEFAULT false,
+    sartlar_kabul_tarihi timestamp without time zone,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    guncelleme timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    silinme timestamp without time zone
+);
+
+
+ALTER TABLE public.kullanicilar OWNER TO postgres;
+
+--
+-- TOC entry 243 (class 1259 OID 30467)
+-- Name: lisanslar; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.lisanslar (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    ciftlik_id uuid,
+    firma_id uuid,
+    lisans_turu character varying(100) NOT NULL,
+    ad character varying(255) NOT NULL,
+    lisans_no character varying(100) NOT NULL,
+    veren_kurum character varying(255) NOT NULL,
+    baslangic date NOT NULL,
+    bitis date,
+    suresiz boolean DEFAULT false,
+    durum character varying(50) DEFAULT 'aktif'::character varying,
+    yenileme_gerekli boolean DEFAULT true,
+    yenileme_uyari_gun integer DEFAULT 90,
+    belge_url text,
+    aciklama text,
+    hatirlatici_gonderildi boolean DEFAULT false,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    guncelleme timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_lisans_varlik CHECK ((((ciftlik_id IS NOT NULL) AND (firma_id IS NULL)) OR ((ciftlik_id IS NULL) AND (firma_id IS NOT NULL))))
+);
+
+
+ALTER TABLE public.lisanslar OWNER TO postgres;
+
+--
+-- TOC entry 244 (class 1259 OID 30481)
+-- Name: mesaj_ekleri; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.mesaj_ekleri (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    mesaj_id uuid NOT NULL,
+    dosya_adi character varying(255) NOT NULL,
+    dosya_yolu text NOT NULL,
+    dosya_boyutu integer,
+    dosya_tipi character varying(50),
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.mesaj_ekleri OWNER TO postgres;
+
+--
+-- TOC entry 245 (class 1259 OID 30488)
+-- Name: mesajlar; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.mesajlar (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    gonderen_id uuid NOT NULL,
+    alici_id uuid NOT NULL,
+    konu character varying(255),
+    mesaj text NOT NULL,
+    okundu boolean DEFAULT false,
+    okunma_tarihi timestamp without time zone,
+    ust_mesaj_id uuid,
+    gonderen_sildi boolean DEFAULT false,
+    alici_sildi boolean DEFAULT false,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.mesajlar OWNER TO postgres;
+
+--
+-- TOC entry 246 (class 1259 OID 30498)
+-- Name: oda_uyelikleri; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.oda_uyelikleri (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    oda_tipi character varying(50) NOT NULL,
+    ciftlik_id uuid,
+    firma_id uuid,
+    kullanici_id uuid NOT NULL,
+    uyelik_no character varying(100) NOT NULL,
+    baslangic_tarihi date NOT NULL,
+    bitis_tarihi date,
+    yenileme_tarihi date,
+    durum character varying(50) DEFAULT 'basvuru'::character varying,
+    uyelik_ucreti numeric(12,2),
+    odeme_durumu character varying(50),
+    son_odeme_tarihi date,
+    otomatik_yenileme boolean DEFAULT false,
+    belge_url text,
+    notlar text,
+    onaylayan_id uuid,
+    onay_tarihi timestamp without time zone,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    guncelleme timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_oda_varlik CHECK ((((ciftlik_id IS NOT NULL) AND (firma_id IS NULL)) OR ((ciftlik_id IS NULL) AND (firma_id IS NOT NULL))))
+);
+
+
+ALTER TABLE public.oda_uyelikleri OWNER TO postgres;
+
+--
+-- TOC entry 247 (class 1259 OID 30509)
+-- Name: rapor_turleri; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.rapor_turleri (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    kod character varying(20) NOT NULL,
+    ad character varying(100) NOT NULL,
+    aciklama text,
+    aktif boolean DEFAULT true,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.rapor_turleri OWNER TO postgres;
+
+--
+-- TOC entry 248 (class 1259 OID 30517)
+-- Name: rapor_verileri; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.rapor_verileri (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    rapor_id uuid NOT NULL,
+    veri_anahtari character varying(100) NOT NULL,
+    veri_degeri text,
+    veri_tipi character varying(50),
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.rapor_verileri OWNER TO postgres;
+
+--
+-- TOC entry 249 (class 1259 OID 30524)
+-- Name: raporlar; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.raporlar (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    rapor_turu_id uuid NOT NULL,
+    baslik character varying(255) NOT NULL,
+    aciklama text,
+    olusturan_id uuid,
+    ciftlik_id uuid,
+    firma_id uuid,
+    baslangic_tarihi date,
+    bitis_tarihi date,
+    dosya_yolu text,
+    herkese_acik boolean DEFAULT false,
+    goruntulenme integer DEFAULT 0,
+    rapor_tarihi timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.raporlar OWNER TO postgres;
+
+--
+-- TOC entry 250 (class 1259 OID 30534)
+-- Name: resmi_bildirim_ekleri; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.resmi_bildirim_ekleri (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    bildirim_id uuid NOT NULL,
+    dosya_adi character varying(255) NOT NULL,
+    dosya_yolu text NOT NULL,
+    dosya_tipi character varying(50),
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.resmi_bildirim_ekleri OWNER TO postgres;
+
+--
+-- TOC entry 251 (class 1259 OID 30541)
+-- Name: resmi_bildirimler; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.resmi_bildirimler (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    bildirim_no character varying(50) NOT NULL,
+    mesaj_turu character varying(50) NOT NULL,
+    gonderen_id uuid NOT NULL,
+    alici_id uuid NOT NULL,
+    ciftlik_id uuid,
+    firma_id uuid,
+    basvuru_id uuid,
+    konu character varying(255) NOT NULL,
+    mesaj text NOT NULL,
+    resmi_tarih date DEFAULT CURRENT_DATE,
+    gecerlilik_tarihi date,
+    okundu boolean DEFAULT false,
+    okunma_tarihi timestamp without time zone,
+    tebligat_yapildi boolean DEFAULT false,
+    tebligat_tarihi timestamp without time zone,
+    imza_bilgisi text,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.resmi_bildirimler OWNER TO postgres;
+
+--
+-- TOC entry 252 (class 1259 OID 30551)
+-- Name: sdg_metrikleri; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.sdg_metrikleri (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    ciftlik_id uuid,
+    firma_id uuid,
+    metrik_tarihi date NOT NULL,
+    sdg_hedef_no smallint,
+    metrik_adi character varying(200) NOT NULL,
+    metrik_degeri numeric(15,2),
+    birim character varying(50),
+    aciklama text,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    guncelleme timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT sdg_metrikleri_sdg_hedef_no_check CHECK (((sdg_hedef_no >= 1) AND (sdg_hedef_no <= 17)))
+);
+
+
+ALTER TABLE public.sdg_metrikleri OWNER TO postgres;
+
+--
+-- TOC entry 253 (class 1259 OID 30560)
+-- Name: sehirler; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.sehirler (
+    id smallint NOT NULL,
+    ad character varying(50) NOT NULL,
+    bolge character varying(50)
+);
+
+
+ALTER TABLE public.sehirler OWNER TO postgres;
+
+--
+-- TOC entry 254 (class 1259 OID 30563)
+-- Name: sektorler; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.sektorler (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    kod character varying(20) NOT NULL,
+    ad character varying(100) NOT NULL,
+    aciklama text,
+    aktif boolean DEFAULT true,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.sektorler OWNER TO postgres;
+
+--
+-- TOC entry 255 (class 1259 OID 30571)
+-- Name: seq_bildirim_no; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.seq_bildirim_no
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.seq_bildirim_no OWNER TO postgres;
+
+--
+-- TOC entry 256 (class 1259 OID 30572)
+-- Name: seq_sanayi_uyelik; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.seq_sanayi_uyelik
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.seq_sanayi_uyelik OWNER TO postgres;
+
+--
+-- TOC entry 257 (class 1259 OID 30573)
+-- Name: seq_siparis_no; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.seq_siparis_no
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.seq_siparis_no OWNER TO postgres;
+
+--
+-- TOC entry 258 (class 1259 OID 30574)
+-- Name: seq_ziraat_uyelik; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.seq_ziraat_uyelik
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.seq_ziraat_uyelik OWNER TO postgres;
+
+--
+-- TOC entry 259 (class 1259 OID 30575)
+-- Name: sertifika_turleri; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.sertifika_turleri (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    kod character varying(30) NOT NULL,
+    ad character varying(100) NOT NULL,
+    aciklama text,
+    gecerlilik_suresi integer,
+    aktif boolean DEFAULT true,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.sertifika_turleri OWNER TO postgres;
+
+--
+-- TOC entry 260 (class 1259 OID 30583)
+-- Name: siparis_durum_gecmisi; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.siparis_durum_gecmisi (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    siparis_id uuid NOT NULL,
+    durum character varying(50) NOT NULL,
+    notlar text,
+    degistiren_id uuid,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.siparis_durum_gecmisi OWNER TO postgres;
+
+--
+-- TOC entry 261 (class 1259 OID 30590)
+-- Name: siparisler; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.siparisler (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    siparis_no character varying(50) NOT NULL,
+    teklif_id uuid,
+    urun_id uuid NOT NULL,
+    ciftlik_id uuid NOT NULL,
+    firma_id uuid NOT NULL,
+    alici_id uuid NOT NULL,
+    satici_id uuid NOT NULL,
+    miktar numeric(10,2) NOT NULL,
+    birim_id uuid NOT NULL,
+    birim_fiyat numeric(12,2) NOT NULL,
+    toplam_fiyat numeric(15,2) NOT NULL,
+    kdv_tutari numeric(12,2),
+    kargo_ucreti numeric(10,2),
+    genel_toplam numeric(15,2),
+    durum character varying(50) DEFAULT 'olusturuldu'::character varying,
+    teslimat_adresi text,
+    teslimat_tarihi date,
+    sevk_tarihi timestamp without time zone,
+    teslim_tarihi timestamp without time zone,
+    fatura_no character varying(100),
+    fatura_tarihi date,
+    odeme_yontemi character varying(50),
+    odeme_durumu character varying(50),
+    notlar text,
+    iptal_nedeni text,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    guncelleme timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.siparisler OWNER TO postgres;
+
+--
+-- TOC entry 262 (class 1259 OID 30599)
+-- Name: teklifler; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.teklifler (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    urun_id uuid NOT NULL,
+    ciftlik_id uuid NOT NULL,
+    firma_id uuid NOT NULL,
+    alici_id uuid NOT NULL,
+    satici_id uuid NOT NULL,
+    miktar numeric(10,2) NOT NULL,
+    birim_id uuid NOT NULL,
+    birim_fiyat numeric(12,2) NOT NULL,
+    toplam_fiyat numeric(15,2) NOT NULL,
+    notlar text,
+    durum character varying(50) DEFAULT 'beklemede'::character varying,
+    gecerlilik_tarihi date,
+    yanit_tarihi timestamp without time zone,
+    yanit_notu text,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    guncelleme timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.teklifler OWNER TO postgres;
+
+--
+-- TOC entry 263 (class 1259 OID 30608)
+-- Name: urun_basvurulari; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.urun_basvurulari (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    urun_id uuid,
+    ciftlik_id uuid NOT NULL,
+    basvuran_adi character varying(200) NOT NULL,
+    urun_adi character varying(200) NOT NULL,
+    kategori_id uuid NOT NULL,
+    durum character varying(50) DEFAULT 'incelemede'::character varying,
+    notlar text,
+    red_nedeni text,
+    basvuru_tarihi timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    inceleme_tarihi timestamp without time zone,
+    inceleyen_id uuid,
+    onay_tarihi timestamp without time zone,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    guncelleme timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.urun_basvurulari OWNER TO postgres;
+
+--
+-- TOC entry 264 (class 1259 OID 30618)
+-- Name: urun_kategorileri; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.urun_kategorileri (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    kod character varying(20) NOT NULL,
+    ad character varying(100) NOT NULL,
+    ust_kategori_id uuid,
+    aciklama text,
+    aktif boolean DEFAULT true,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.urun_kategorileri OWNER TO postgres;
+
+--
+-- TOC entry 265 (class 1259 OID 30626)
+-- Name: urun_ozellikleri; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.urun_ozellikleri (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    urun_id uuid NOT NULL,
+    anahtar character varying(100) NOT NULL,
+    deger character varying(255) NOT NULL,
+    birim character varying(50),
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.urun_ozellikleri OWNER TO postgres;
+
+--
+-- TOC entry 266 (class 1259 OID 30631)
+-- Name: urun_resimleri; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.urun_resimleri (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    urun_id uuid NOT NULL,
+    resim_url text NOT NULL,
+    sira_no integer DEFAULT 0,
+    baslik character varying(255),
+    ana_resim boolean DEFAULT false,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.urun_resimleri OWNER TO postgres;
+
+--
+-- TOC entry 267 (class 1259 OID 30640)
+-- Name: urun_sertifikalari; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.urun_sertifikalari (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    urun_id uuid NOT NULL,
+    sertifika_turu_id uuid NOT NULL,
+    sertifika_no character varying(100),
+    baslangic_tarihi date,
+    bitis_tarihi date,
+    dosya_url text,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.urun_sertifikalari OWNER TO postgres;
+
+--
+-- TOC entry 268 (class 1259 OID 30647)
+-- Name: urunler; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.urunler (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    ciftlik_id uuid NOT NULL,
+    kategori_id uuid NOT NULL,
+    ad character varying(200) NOT NULL,
+    aciklama text,
+    birim_id uuid NOT NULL,
+    birim_fiyat numeric(12,2),
+    mevcut_miktar numeric(10,2),
+    min_siparis_miktari numeric(10,2),
+    durum character varying(50) DEFAULT 'stokta'::character varying,
+    onerilir boolean DEFAULT false,
+    goruntulenme integer DEFAULT 0,
+    olusturma timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    guncelleme timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    silinme timestamp without time zone
+);
+
+
+ALTER TABLE public.urunler OWNER TO postgres;
+
+--
+-- TOC entry 269 (class 1259 OID 30658)
+-- Name: v_aktif_ciftlikler; Type: VIEW; Schema: public; Owner: postgres
+--
+
+CREATE VIEW public.v_aktif_ciftlikler AS
+SELECT
+    NULL::uuid AS id,
+    NULL::uuid AS kullanici_id,
+    NULL::character varying(200) AS ad,
+    NULL::character varying(100) AS kayit_no,
+    NULL::character varying(20) AS telefon,
+    NULL::text AS adres,
+    NULL::smallint AS sehir_id,
+    NULL::numeric(10,8) AS enlem,
+    NULL::numeric(11,8) AS boylam,
+    NULL::numeric(10,2) AS alan,
+    NULL::public.durum_tipi AS durum,
+    NULL::date AS kayit_tarihi,
+    NULL::numeric(15,2) AS yillik_gelir,
+    NULL::numeric(10,2) AS uretim_kapasitesi,
+    NULL::boolean AS organik,
+    NULL::boolean AS iyi_tarim,
+    NULL::text AS aciklama,
+    NULL::character varying(255) AS website,
+    NULL::timestamp without time zone AS olusturma,
+    NULL::timestamp without time zone AS guncelleme,
+    NULL::timestamp without time zone AS silinme,
+    NULL::text AS sahip_adi,
+    NULL::character varying(255) AS eposta,
+    NULL::character varying(20) AS kullanici_telefon,
+    NULL::character varying(50) AS sehir_adi,
+    NULL::bigint AS urun_sayisi;
+
+
+ALTER VIEW public.v_aktif_ciftlikler OWNER TO postgres;
+
+--
+-- TOC entry 270 (class 1259 OID 30662)
+-- Name: v_urunler_detay; Type: VIEW; Schema: public; Owner: postgres
+--
+
+CREATE VIEW public.v_urunler_detay AS
+ SELECT u.id,
+    u.ciftlik_id,
+    u.kategori_id,
+    u.ad,
+    u.aciklama,
+    u.birim_id,
+    u.birim_fiyat,
+    u.mevcut_miktar,
+    u.min_siparis_miktari,
+    u.durum,
+    u.onerilir,
+    u.goruntulenme,
+    u.olusturma,
+    u.guncelleme,
+    u.silinme,
+    c.ad AS uretici_adi,
+    s.ad AS bolge,
+    c.telefon AS uretici_telefon,
+    c.organik,
+    c.iyi_tarim,
+    uk.ad AS kategori_adi,
+    b.ad AS birim_adi,
+    b.sembol AS birim_sembol
+   FROM ((((public.urunler u
+     JOIN public.ciftlikler c ON ((u.ciftlik_id = c.id)))
+     LEFT JOIN public.sehirler s ON ((c.sehir_id = s.id)))
+     JOIN public.urun_kategorileri uk ON ((u.kategori_id = uk.id)))
+     JOIN public.birimler b ON ((u.birim_id = b.id)))
+  WHERE (u.silinme IS NULL);
+
+
+ALTER VIEW public.v_urunler_detay OWNER TO postgres;
+
+--
+-- TOC entry 5514 (class 0 OID 30267)
+-- Dependencies: 219
+-- Data for Name: aktivite_metadata; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.aktivite_metadata (id, aktivite_id, anahtar, deger, olusturma) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5515 (class 0 OID 30274)
+-- Dependencies: 220
+-- Data for Name: aktiviteler; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.aktiviteler (id, kullanici_id, tip, varlik_tipi, varlik_id, baslik, aciklama, ip_adresi, user_agent, olusturma) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5516 (class 0 OID 30281)
+-- Dependencies: 221
+-- Data for Name: atik_cevre_etkileri; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.atik_cevre_etkileri (id, atik_islem_id, metrik_adi, metrik_degeri, birim, olusturma) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5517 (class 0 OID 30286)
+-- Dependencies: 222
+-- Data for Name: atik_islemleri; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.atik_islemleri (id, ciftlik_id, firma_id, urun_id, atik_turu_id, miktar, birim_id, islem_tipi, islem_tarihi, fiyat, aciklama, olusturma, guncelleme) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5518 (class 0 OID 30294)
+-- Dependencies: 223
+-- Data for Name: atik_turleri; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.atik_turleri (id, kod, ad, aciklama, aktif, olusturma) FROM stdin;
+d5a2be24-fd14-4950-842f-d491aff9c219	HAYVANSAL	Hayvansal Gübre	\N	t	2025-11-20 22:57:58.719064
+2fd7d12e-8603-4e94-93f3-54d49fdf7091	BITKISEL	Bitkisel Atık	\N	t	2025-11-20 22:57:58.719064
+c485a632-be45-49c7-bf2c-0fcaa13fc507	TARIMSAL	Tarımsal Sanayi Atığı	\N	t	2025-11-20 22:57:58.719064
+9fcc3aa3-d42c-438e-858f-c6e6f72610c8	ORGANIK	Organik Atık	\N	t	2025-11-20 22:57:58.719064
+0fac65dc-25ca-42d2-9631-315fd56445f3	BIYOKUTLE	Biyokütle	\N	t	2025-11-20 22:57:58.719064
+21e1385e-4b2d-46b9-ba42-a6cff9a51954	DIGER	Diğer	\N	t	2025-11-20 22:57:58.719064
+05dc3c07-e291-4123-ab19-a9ef7037d7e4	hayvansal-gubre	Hayvansal Gübre	Hayvansal gübre atıkları	t	2025-11-20 22:58:10.12649
+9b4df915-8f91-4f55-98d8-3a4130c43f6b	bitkisel-atik	Bitkisel Atık	Bitkisel kökenli atıklar	t	2025-11-20 22:58:10.12649
+10a6eb12-f331-47c0-b00b-bc2a39df7441	tarimsal-sanayi	Tarımsal Sanayi Yan Ürünü	Tarımsal sanayi atıkları	t	2025-11-20 22:58:10.12649
+20ad3f3a-70b7-459a-9183-e220157d8009	organik-atik	Organik Atık	Organik kökenli atıklar	t	2025-11-20 22:58:10.12649
+a8f2b9cb-765b-4878-a78e-d681766ad100	biyokutle	Biyokütle	Biyokütle atıkları	t	2025-11-20 22:58:10.12649
+0c30ba69-b1d8-4318-b526-ba2797e8eb50	diger	Diğer Atık Türleri	Diğer atık türleri	t	2025-11-20 22:58:10.12649
+\.
+
+
+--
+-- TOC entry 5519 (class 0 OID 30302)
+-- Dependencies: 224
+-- Data for Name: ayarlar; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.ayarlar (id, anahtar, deger, deger_tipi, aciklama, herkese_acik, guncelleyen_id, olusturma, guncelleme) FROM stdin;
+ea32c33f-0e86-4af7-9841-26ad0ef26e63	site_adi	Yeşil-Eksen	metin	Site adı	t	\N	2025-11-20 22:57:58.719064	2025-11-20 22:57:58.719064
+9ef9e878-d559-475a-8d6a-cf68a1d7ada3	site_aciklama	Tarımı Sanayi ile Buluşturan Platform	metin	Site açıklaması	t	\N	2025-11-20 22:57:58.719064	2025-11-20 22:57:58.719064
+2ef6fbb5-b363-4c88-abcf-9a98da0e1f3d	bakim_modu	false	mantiksal	Bakım modu	f	\N	2025-11-20 22:57:58.719064	2025-11-20 22:57:58.719064
+828a682a-c4ec-4034-9b31-3e035386098c	maks_dosya_mb	10	sayi	Maksimum dosya boyutu (MB)	f	\N	2025-11-20 22:57:58.719064	2025-11-20 22:57:58.719064
+\.
+
+
+--
+-- TOC entry 5520 (class 0 OID 30311)
+-- Dependencies: 225
+-- Data for Name: belge_turleri; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.belge_turleri (id, kod, ad, aciklama, gecerlilik_suresi, zorunlu, aktif, olusturma) FROM stdin;
+da7dca7d-c8b9-45de-af86-01f2e0dcb6b7	TAPU	Tapu Belgesi	\N	\N	t	t	2025-11-20 22:57:58.719064
+877cb07f-ba9b-4ab3-87d0-9281e779a46b	RUHSAT	İşletme Ruhsatı	\N	12	t	t	2025-11-20 22:57:58.719064
+ab443ca3-5a27-47f7-8f0f-c438c1212bd8	KIMLIK	Kimlik Belgesi	\N	\N	t	t	2025-11-20 22:57:58.719064
+99e1ae4e-1bc6-4dcc-a734-d6075e816c99	VERGI	Vergi Levhası	\N	12	t	t	2025-11-20 22:57:58.719064
+c6249b06-1ffa-4ff7-85dc-5b94d8f53797	SICIL	Ticaret Sicil Belgesi	\N	\N	t	t	2025-11-20 22:57:58.719064
+ff2bcea8-411a-45ee-8baa-28449eb6233f	IMZA_SIRKULERI	İmza Sirküleri	\N	\N	t	t	2025-11-20 22:57:58.719064
+6575c716-94b9-4b1c-9df3-de9dbbe3659a	FAALIYET_BELGESI	Faaliyet Belgesi	\N	12	t	t	2025-11-20 22:57:58.719064
+631afc5c-5113-4a83-a86f-14f2dbfc992f	ODA_KAYIT	Oda Kayıt Sicil Sureti	\N	12	t	t	2025-11-20 22:57:58.719064
+04937edb-3d29-49ed-862b-680ee8f86f2e	URUN_FOTOGRAFI	Ürün Fotoğrafı	\N	\N	t	t	2025-11-20 22:57:58.719064
+26afe4cc-18ed-42b2-ad32-a79a4bb7d67d	MENSEI_BELGESI	Menşei Belgesi (ÇKS / İşletme Tescil)	\N	\N	t	t	2025-11-20 22:57:58.719064
+9c479143-4671-4e4c-be39-be2e0866c238	LABORATUVAR_ANALIZ	Laboratuvar Analiz Raporu	\N	12	f	t	2025-11-20 22:57:58.719064
+bdef2f3f-6486-43aa-a031-a6d3f0804756	TICARET_SICIL_GAZETESI	Ticaret Sicil Gazetesi	\N	\N	t	t	2025-11-20 22:57:58.719064
+a1a976bd-04dd-406a-9836-74ebe521ecaa	tapu_kira	Tapu Senedi veya Onaylı Kira Sözleşmesi	\N	\N	t	t	2025-11-20 22:58:10.12649
+b390565a-2d5e-493d-b863-4058627094d6	nufus_cuzdani	Nüfus Cüzdanı Fotokopisi	\N	\N	t	t	2025-11-20 22:58:10.12649
+8aecea08-9ca7-4f8e-ab2f-20f8d1228227	ciftci_kutugu	Çiftçi Kütüğü Kaydı	\N	\N	t	t	2025-11-20 22:58:10.12649
+5f680ddd-4d5c-4726-8dff-aaa98ec48563	muvafakatname	Muvafakatname	\N	\N	f	t	2025-11-20 22:58:10.12649
+23804248-ff0e-46d6-b07d-bbd043d0597c	taahhutname	Taahhütname	\N	\N	f	t	2025-11-20 22:58:10.12649
+d34a1e3e-ee76-4362-9e33-a5449c93127c	doner_sermaye	Döner Sermaye Ücret Makbuzu	\N	\N	f	t	2025-11-20 22:58:10.12649
+fcadd142-a298-43ea-a1ea-bbb5d4b70b91	ticaret_sicil	Ticaret Sicil Gazetesi	\N	\N	t	t	2025-11-20 22:58:10.12649
+fdedb80e-fd48-4756-bcb0-e7dc9a6f932f	vergi_levhasi	Vergi Levhası	\N	\N	t	t	2025-11-20 22:58:10.12649
+aa4a9d0f-ea60-4503-9f60-1c362fd31e96	imza_sirkuleri	İmza Sirküleri	\N	\N	t	t	2025-11-20 22:58:10.12649
+b0ac6bd3-3b30-43d7-98a9-8cb92902bb23	faaliyet_belgesi	Faaliyet Belgesi	\N	\N	t	t	2025-11-20 22:58:10.12649
+3c1cae6b-7ce3-4567-bbe9-8c97fc0ecc09	oda_kayit	Oda Kayıt Sicil Sureti	\N	\N	t	t	2025-11-20 22:58:10.12649
+704d98bf-96a7-47f5-8960-60990ddcf309	gida_isletme	Gıda İşletme Kayıt/Onay Belgesi	\N	\N	f	t	2025-11-20 22:58:10.12649
+8847520b-c9ed-4711-88fc-9ff1dfb5fe85	sanayi_sicil	Sanayi Sicil Belgesi	\N	\N	f	t	2025-11-20 22:58:10.12649
+f75466a2-7910-439a-b55b-83beba394a42	kapasite_raporu	Kapasite Raporu	\N	\N	f	t	2025-11-20 22:58:10.12649
+\.
+
+
+--
+-- TOC entry 5521 (class 0 OID 30320)
+-- Dependencies: 226
+-- Data for Name: belgeler; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.belgeler (id, kullanici_id, ciftlik_id, firma_id, basvuru_id, basvuru_tipi, belge_turu_id, ad, dosya_yolu, dosya_boyutu, dosya_tipi, durum, kullanici_notu, yonetici_notu, red_nedeni, yuklenme, inceleme_tarihi, inceleyen_id, gecerlilik_tarihi, zorunlu, olusturma, guncelleme) FROM stdin;
+8f5f90a7-120d-4543-a139-119fc81c9de4	ff434b0f-dd57-4f17-a64f-ba964caa480a	\N	7f7f0abc-ebad-462a-a156-5f71524f815a	\N	\N	fcadd142-a298-43ea-a1ea-bbb5d4b70b91	49774499788.pdf	company/1763670266359-soloturk972_gmail_com-49774499788.pdf	69761	pdf	beklemede	\N	\N	\N	2025-11-20 23:24:26.733384	\N	\N	\N	t	2025-11-20 23:24:26.733384	2025-11-20 23:24:26.733384
+5a014a4e-f52a-4772-b302-c3fa2311356f	ff434b0f-dd57-4f17-a64f-ba964caa480a	\N	7f7f0abc-ebad-462a-a156-5f71524f815a	\N	\N	fdedb80e-fd48-4756-bcb0-e7dc9a6f932f	surucu-raporu-beyan-basvurusu.pdf	company/1763670266359-soloturk972_gmail_com-surucu_raporu_beyan_basvurusu.pdf	74320	pdf	beklemede	\N	\N	\N	2025-11-20 23:24:26.733384	\N	\N	\N	t	2025-11-20 23:24:26.733384	2025-11-20 23:24:26.733384
+ce47e14a-b002-42f4-ab2c-77993a1a4ad8	ff434b0f-dd57-4f17-a64f-ba964caa480a	\N	7f7f0abc-ebad-462a-a156-5f71524f815a	\N	\N	aa4a9d0f-ea60-4503-9f60-1c362fd31e96	Mehmet_Kivrak_Projesi.pdf	company/1763670266360-soloturk972_gmail_com-Mehmet_Kivrak_Projesi.pdf	323515	pdf	beklemede	\N	\N	\N	2025-11-20 23:24:26.733384	\N	\N	\N	t	2025-11-20 23:24:26.733384	2025-11-20 23:24:26.733384
+b37ece80-ee81-407d-99dc-e899d657075d	ff434b0f-dd57-4f17-a64f-ba964caa480a	\N	7f7f0abc-ebad-462a-a156-5f71524f815a	\N	\N	b0ac6bd3-3b30-43d7-98a9-8cb92902bb23	YeÅilEksenProjeÃneriFormu.pdf	company/1763670266363-soloturk972_gmail_com-Ye__ilEksenProje__neriFormu.pdf	3595068	pdf	beklemede	\N	\N	\N	2025-11-20 23:24:26.733384	\N	\N	\N	t	2025-11-20 23:24:26.733384	2025-11-20 23:24:26.733384
+a962488d-5f5a-49c8-b0a3-2ed52b4995e5	ff434b0f-dd57-4f17-a64f-ba964caa480a	\N	7f7f0abc-ebad-462a-a156-5f71524f815a	\N	\N	3c1cae6b-7ce3-4567-bbe9-8c97fc0ecc09	54868330120_Ogrenci.pdf	company/1763670266374-soloturk972_gmail_com-54868330120_Ogrenci.pdf	123682	pdf	beklemede	\N	\N	\N	2025-11-20 23:24:26.733384	\N	\N	\N	t	2025-11-20 23:24:26.733384	2025-11-20 23:24:26.733384
+9976dfd2-4804-4381-bbbc-19b6232c9e11	c645b4ed-9493-494e-a445-7c268af968d6	\N	bb91b789-3ad3-4060-b89c-33c78c168cd6	\N	\N	fcadd142-a298-43ea-a1ea-bbb5d4b70b91	YeÅilEksenProjeÃneriFormu.pdf	company/1763671706689-selma79_gmail_com-Ye__ilEksenProje__neriFormu.pdf	3595068	pdf	beklemede	\N	\N	\N	2025-11-20 23:48:26.9352	\N	\N	\N	t	2025-11-20 23:48:26.9352	2025-11-20 23:48:26.9352
+36e56249-1123-401a-b18d-e0fe7c86d8c8	c645b4ed-9493-494e-a445-7c268af968d6	\N	bb91b789-3ad3-4060-b89c-33c78c168cd6	\N	\N	aa4a9d0f-ea60-4503-9f60-1c362fd31e96	1139B412501169.pdf	company/1763671706702-selma79_gmail_com-1139B412501169.pdf	36769	pdf	beklemede	\N	\N	\N	2025-11-20 23:48:26.9352	\N	\N	\N	t	2025-11-20 23:48:26.9352	2025-11-20 23:48:26.9352
+ab5543ce-48a7-461d-aaa8-7c396d9735d1	04b986b1-4f95-46b7-b4be-5708dfb0551c	6bca051a-f241-44e6-9847-6a26a55071df	\N	\N	\N	a1a976bd-04dd-406a-9836-74ebe521ecaa	gÃ¶rsel_2025-11-21_161047413.png	farmer/1763730654359-selam1_gmail_com-g__rsel_2025_11_21_161047413.png	58318	png	beklemede	\N	\N	\N	2025-11-21 16:10:54.49898	\N	\N	\N	t	2025-11-21 16:10:54.49898	2025-11-21 16:10:54.49898
+85bcac19-1d9b-4c56-963f-fbd84249467a	04b986b1-4f95-46b7-b4be-5708dfb0551c	6bca051a-f241-44e6-9847-6a26a55071df	\N	\N	\N	b390565a-2d5e-493d-b863-4058627094d6	Gemini_Generated_Image_owb9i0owb9i0owb9.png	farmer/1763730654361-selam1_gmail_com-Gemini_Generated_Image_owb9i0owb9i0owb9.png	1554055	png	beklemede	\N	\N	\N	2025-11-21 16:10:54.49898	\N	\N	\N	t	2025-11-21 16:10:54.49898	2025-11-21 16:10:54.49898
+f1cd61bf-d0bf-4521-82c6-84a9d100b082	04b986b1-4f95-46b7-b4be-5708dfb0551c	6bca051a-f241-44e6-9847-6a26a55071df	\N	\N	\N	8aecea08-9ca7-4f8e-ab2f-20f8d1228227	Gemini_Generated_Image_ua3sx1ua3sx1ua3s.png	farmer/1763730654369-selam1_gmail_com-Gemini_Generated_Image_ua3sx1ua3sx1ua3s.png	938287	png	beklemede	\N	\N	\N	2025-11-21 16:10:54.49898	\N	\N	\N	t	2025-11-21 16:10:54.49898	2025-11-21 16:10:54.49898
+5dbeb7ff-e69a-4cf2-b43c-62c03a9bec7d	4b515f40-fb60-46d1-b273-ab27d6bf50f1	5fbfdc30-787c-4329-9eb8-5314c356af7f	\N	\N	\N	a1a976bd-04dd-406a-9836-74ebe521ecaa	Gemini_Generated_Image_owb9i0owb9i0owb9.png	farmer/1763744696170-selam322_gmail_com-Gemini_Generated_Image_owb9i0owb9i0owb9.png	1554055	png	beklemede	\N	\N	\N	2025-11-21 20:04:56.413186	\N	\N	\N	t	2025-11-21 20:04:56.413186	2025-11-21 20:04:56.413186
+707a3843-987f-4694-8778-24d5cc7de52e	4b515f40-fb60-46d1-b273-ab27d6bf50f1	5fbfdc30-787c-4329-9eb8-5314c356af7f	\N	\N	\N	b390565a-2d5e-493d-b863-4058627094d6	Gemini_Generated_Image_owb9i0owb9i0owb9.png	farmer/1763744696178-selam322_gmail_com-Gemini_Generated_Image_owb9i0owb9i0owb9.png	1554055	png	beklemede	\N	\N	\N	2025-11-21 20:04:56.413186	\N	\N	\N	t	2025-11-21 20:04:56.413186	2025-11-21 20:04:56.413186
+f0780af7-9b23-46c3-b708-7eefa187c74b	4b515f40-fb60-46d1-b273-ab27d6bf50f1	5fbfdc30-787c-4329-9eb8-5314c356af7f	\N	\N	\N	8aecea08-9ca7-4f8e-ab2f-20f8d1228227	Gemini_Generated_Image_5rxjb15rxjb15rxj.png	farmer/1763744696183-selam322_gmail_com-Gemini_Generated_Image_5rxjb15rxjb15rxj.png	1393131	png	beklemede	\N	\N	\N	2025-11-21 20:04:56.413186	\N	\N	\N	t	2025-11-21 20:04:56.413186	2025-11-21 20:04:56.413186
+ae125d1f-6f16-49dc-935b-b66206d09b92	b75b0b28-7bad-436b-8f42-29cb0c489c7c	\N	\N	b6dab8ea-3448-4c6b-80df-4f99714079a9	ciftlik_basvurusu	b390565a-2d5e-493d-b863-4058627094d6	Gemini_Generated_Image_5rxjb15rxjb15rxj.png	farmer/1763830547317-selam77_gmail_com-Gemini_Generated_Image_5rxjb15rxjb15rxj.png	1393131	png	onaylandi	\N	gg	gfgfg	2025-11-22 19:55:47.543815	2025-11-24 12:32:57.621773	6019bc92-1886-4e13-9f75-c84f5caf2e7d	\N	t	2025-11-22 19:55:47.543815	2025-11-24 12:32:57.621773
+b469923e-97ea-4bba-b5df-64848e127b06	b75b0b28-7bad-436b-8f42-29cb0c489c7c	\N	\N	b6dab8ea-3448-4c6b-80df-4f99714079a9	ciftlik_basvurusu	8aecea08-9ca7-4f8e-ab2f-20f8d1228227	Gemini_Generated_Image_hb1q31hb1q31hb1q.png	farmer/1763830547327-selam77_gmail_com-Gemini_Generated_Image_hb1q31hb1q31hb1q.png	1497709	png	reddedildi	\N	vvv	vvv	2025-11-22 19:55:47.543815	2025-11-24 12:33:00.576461	6019bc92-1886-4e13-9f75-c84f5caf2e7d	\N	t	2025-11-22 19:55:47.543815	2025-11-24 12:33:00.576461
+49c2ab7b-4be0-44f1-b2b7-29d0bee95df8	b75b0b28-7bad-436b-8f42-29cb0c489c7c	\N	\N	b6dab8ea-3448-4c6b-80df-4f99714079a9	ciftlik_basvurusu	a1a976bd-04dd-406a-9836-74ebe521ecaa	Gemini_Generated_Image_hb1q31hb1q31hb1q.png	farmer/1763830547298-selam77_gmail_com-Gemini_Generated_Image_hb1q31hb1q31hb1q.png	1497709	png	onaylandi	\N	\N	\N	2025-11-22 19:55:47.543815	2025-11-23 20:11:21.3745	6019bc92-1886-4e13-9f75-c84f5caf2e7d	\N	t	2025-11-22 19:55:47.543815	2025-11-23 20:11:21.3745
+1066fdf8-42c1-4251-bc4d-a4eed152d62f	1afb1c72-f164-4fc4-96dc-066cd9dae1cf	9a12f9de-9d9a-434e-b583-db2189e39122	\N	70dd8d56-f106-4c8e-88b9-f530f0343633	ciftlik_basvurusu	b390565a-2d5e-493d-b863-4058627094d6	kasÄ±m akÅam yemeÄi.pdf	farmer/1763833863187-selam88_gmail_com-kas__m_ak__am_yeme__i.pdf	583944	pdf	onaylandi	\N	bu kısımda sadce	bu belge eksik	2025-11-22 20:51:03.337512	2025-11-24 10:23:52.756524	6019bc92-1886-4e13-9f75-c84f5caf2e7d	\N	t	2025-11-22 20:51:03.337512	2025-11-24 12:29:57.013472
+192aaef6-3ef3-40df-b8c4-c58b97f522ab	1afb1c72-f164-4fc4-96dc-066cd9dae1cf	9a12f9de-9d9a-434e-b583-db2189e39122	\N	70dd8d56-f106-4c8e-88b9-f530f0343633	ciftlik_basvurusu	8aecea08-9ca7-4f8e-ab2f-20f8d1228227	Gemini_Generated_Image_80n1f580n1f580n1 (1).png	farmer/1763833863191-selam88_gmail_com-Gemini_Generated_Image_80n1f580n1f580n1__1_.png	1535626	png	onaylandi	\N	dsads	Bunu neden	2025-11-22 20:51:03.337512	2025-11-24 10:57:11.629423	6019bc92-1886-4e13-9f75-c84f5caf2e7d	\N	t	2025-11-22 20:51:03.337512	2025-11-24 12:29:57.013472
+015cee7b-909b-4d5f-b17d-be47bf33d152	1afb1c72-f164-4fc4-96dc-066cd9dae1cf	9a12f9de-9d9a-434e-b583-db2189e39122	\N	70dd8d56-f106-4c8e-88b9-f530f0343633	ciftlik_basvurusu	a1a976bd-04dd-406a-9836-74ebe521ecaa	kasÄ±m akÅam yemeÄi.pdf	farmer/1763833863184-selam88_gmail_com-kas__m_ak__am_yeme__i.pdf	583944	pdf	onaylandi	\N	dd	ddddd	2025-11-22 20:51:03.337512	2025-11-24 12:28:58.018124	6019bc92-1886-4e13-9f75-c84f5caf2e7d	\N	t	2025-11-22 20:51:03.337512	2025-11-24 12:29:57.013472
+\.
+
+
+--
+-- TOC entry 5522 (class 0 OID 30331)
+-- Dependencies: 227
+-- Data for Name: bildirim_metadata; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.bildirim_metadata (id, bildirim_id, anahtar, deger, olusturma) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5523 (class 0 OID 30338)
+-- Dependencies: 228
+-- Data for Name: bildirim_turleri; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.bildirim_turleri (id, kod, ad, sablon, aktif, olusturma) FROM stdin;
+6f6642be-0be5-404a-977c-a9e53c0a3ce6	SISTEM	Sistem Bildirimi	\N	t	2025-11-20 22:57:58.719064
+f359936e-e656-46ca-b957-e3ec9c983a53	BASVURU	Başvuru Durumu	\N	t	2025-11-20 22:57:58.719064
+d8e2e859-0151-46dc-9bf3-dd3c99ebfa79	SIPARIS	Sipariş Durumu	\N	t	2025-11-20 22:57:58.719064
+9e0fe8b1-6b0b-4ded-a6e4-adea4198648a	TEKLIF	Teklif Alındı	\N	t	2025-11-20 22:57:58.719064
+b0fbb298-186f-446b-9969-2cc2bd2ee061	BELGE	Belge İncelemesi	\N	t	2025-11-20 22:57:58.719064
+e71704a4-5fd7-4780-aff8-6c4d2087ba77	MESAJ	Yeni Mesaj	\N	t	2025-11-20 22:57:58.719064
+2b38304e-d57c-4438-9910-daa1b1606323	UYARI	Uyarı	\N	t	2025-11-20 22:57:58.719064
+d610150e-d4c9-46bf-b65f-0af2c4dddaac	URUN_DUZENLEME	Ürün Düzenleme Talebi	\N	t	2025-11-20 22:57:58.719064
+7a4e5bb0-267f-45c8-8c76-6770882ad526	URUN_SILME	Ürün Silme Talebi	\N	t	2025-11-20 22:57:58.719064
+5e38384c-e59f-4cf5-9b2b-276730bbdb1f	BELGE_GUNCELLEME	Belge Güncelleme	\N	t	2025-11-20 22:57:58.719064
+\.
+
+
+--
+-- TOC entry 5524 (class 0 OID 30346)
+-- Dependencies: 229
+-- Data for Name: bildirimler; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.bildirimler (id, kullanici_id, bildirim_turu_id, baslik, mesaj, link, okundu, okunma_tarihi, olusturma) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5525 (class 0 OID 30354)
+-- Dependencies: 230
+-- Data for Name: birimler; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.birimler (id, kod, ad, sembol, tur, olusturma) FROM stdin;
+9c3a1651-8a33-41a9-af01-a2771a91ef6d	TON	Ton	t	agirlik	2025-11-20 22:57:58.719064
+9e0dc14c-132c-4ad5-9c56-d2745bdf941c	KG	Kilogram	kg	agirlik	2025-11-20 22:57:58.719064
+ddc54dca-81b5-4f16-9cfa-a2d5db31f65d	M3	Metreküp	m³	hacim	2025-11-20 22:57:58.719064
+5448be33-135f-416c-a6c4-7b7073c8228e	LT	Litre	lt	hacim	2025-11-20 22:57:58.719064
+6bf7187e-274d-4975-a8e3-25e2a0634e54	ADET	Adet	adet	adet	2025-11-20 22:57:58.719064
+129f520a-bef1-4bad-a1be-41fd328b0a13	ton	Ton	ton	agirlik	2025-11-20 22:58:10.12649
+b186bb55-06a8-49bb-8af2-40e306ea6860	kg	Kilogram	kg	agirlik	2025-11-20 22:58:10.12649
+f18b0852-ce11-4c91-9ddf-aeacb10f392b	m3	Metreküp	m³	hacim	2025-11-20 22:58:10.12649
+ffc28067-9b77-4aaf-8fb3-386c9bef8d1f	lt	Litre	lt	hacim	2025-11-20 22:58:10.12649
+\.
+
+
+--
+-- TOC entry 5526 (class 0 OID 30359)
+-- Dependencies: 231
+-- Data for Name: ciftlik_atik_kapasiteleri; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.ciftlik_atik_kapasiteleri (id, ciftlik_id, atik_turu_id, kapasite, birim_id, periyot, aciklama, olusturma) FROM stdin;
+19fc1787-7a39-4cf4-b89c-434366acc705	6bca051a-f241-44e6-9847-6a26a55071df	05dc3c07-e291-4123-ab19-a9ef7037d7e4	0.00	b186bb55-06a8-49bb-8af2-40e306ea6860	yillik	\N	2025-11-21 16:10:54.49898
+5abd7ff3-a547-444c-a9d4-2af76e7d046f	6bca051a-f241-44e6-9847-6a26a55071df	10a6eb12-f331-47c0-b00b-bc2a39df7441	0.00	b186bb55-06a8-49bb-8af2-40e306ea6860	yillik	\N	2025-11-21 16:10:54.49898
+916379dd-193a-4042-9a74-045d58f321e0	6bca051a-f241-44e6-9847-6a26a55071df	20ad3f3a-70b7-459a-9183-e220157d8009	0.00	b186bb55-06a8-49bb-8af2-40e306ea6860	yillik	\N	2025-11-21 16:10:54.49898
+55e8a0d4-0e9a-4ed3-b141-db6fac6b3a33	5fbfdc30-787c-4329-9eb8-5314c356af7f	05dc3c07-e291-4123-ab19-a9ef7037d7e4	0.00	b186bb55-06a8-49bb-8af2-40e306ea6860	yillik	\N	2025-11-21 20:04:56.413186
+58dec847-d2c8-4299-a1e3-ac900117d550	5fbfdc30-787c-4329-9eb8-5314c356af7f	10a6eb12-f331-47c0-b00b-bc2a39df7441	0.00	b186bb55-06a8-49bb-8af2-40e306ea6860	yillik	\N	2025-11-21 20:04:56.413186
+c53ca667-f128-4797-a77d-c23e11a66a83	9a12f9de-9d9a-434e-b583-db2189e39122	a8f2b9cb-765b-4878-a78e-d681766ad100	0.00	b186bb55-06a8-49bb-8af2-40e306ea6860	yillik	\N	2025-11-24 12:29:57.013472
+b535e08e-a1f4-4abb-aa2b-f7f014efc0ab	9a12f9de-9d9a-434e-b583-db2189e39122	20ad3f3a-70b7-459a-9183-e220157d8009	0.00	b186bb55-06a8-49bb-8af2-40e306ea6860	yillik	\N	2025-11-24 12:29:57.013472
+95194dfb-796a-4e6a-96c1-4223a2444654	9a12f9de-9d9a-434e-b583-db2189e39122	0c30ba69-b1d8-4318-b526-ba2797e8eb50	0.00	b186bb55-06a8-49bb-8af2-40e306ea6860	yillik	\N	2025-11-24 12:29:57.013472
+\.
+
+
+--
+-- TOC entry 5527 (class 0 OID 30366)
+-- Dependencies: 232
+-- Data for Name: ciftlik_basvurulari; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.ciftlik_basvurulari (id, ciftlik_id, kullanici_id, ciftlik_adi, sahip_adi, konum, durum, notlar, red_nedeni, basvuru_tarihi, inceleme_tarihi, inceleyen_id, onay_tarihi, olusturma, guncelleme) FROM stdin;
+b6dab8ea-3448-4c6b-80df-4f99714079a9	\N	b75b0b28-7bad-436b-8f42-29cb0c489c7c	KaraAmbar	İlbilge Kaşıkçı	selvilir dsasddas	ilk_inceleme	Atık Türleri: bitkisel-atik, hayvansal-gubre, tarimsal-sanayi	\N	2025-11-22 19:55:47.543815	\N	\N	\N	2025-11-22 19:55:47.543815	2025-11-22 19:55:47.543815
+70dd8d56-f106-4c8e-88b9-f530f0343633	9a12f9de-9d9a-434e-b583-db2189e39122	1afb1c72-f164-4fc4-96dc-066cd9dae1cf	Nelasa	Zeliha Kaşıkçı	selvilitepe mh 	onaylandi	Atık Türleri: biyokutle, organik-atik, diger	\N	2025-11-22 20:51:03.337512	2025-11-24 12:29:57.013472	6019bc92-1886-4e13-9f75-c84f5caf2e7d	2025-11-24 12:29:57.013472	2025-11-22 20:51:03.337512	2025-11-24 12:29:57.013472
+\.
+
+
+--
+-- TOC entry 5528 (class 0 OID 30376)
+-- Dependencies: 233
+-- Data for Name: ciftlik_sertifikalari; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.ciftlik_sertifikalari (id, ciftlik_id, sertifika_turu_id, sertifika_no, veren_kurum, baslangic_tarihi, bitis_tarihi, suresiz, dosya_url, olusturma) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5529 (class 0 OID 30384)
+-- Dependencies: 234
+-- Data for Name: ciftlikler; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.ciftlikler (id, kullanici_id, ad, kayit_no, telefon, adres, sehir_id, enlem, boylam, alan, durum, kayit_tarihi, yillik_gelir, uretim_kapasitesi, organik, iyi_tarim, aciklama, website, olusturma, guncelleme, silinme) FROM stdin;
+9a12f9de-9d9a-434e-b583-db2189e39122	1afb1c72-f164-4fc4-96dc-066cd9dae1cf	Nelasa	\N	\N	selvilitepe mh 	\N	\N	\N	\N	aktif	2025-11-24	\N	\N	f	f	Atık Türleri: biyokutle, organik-atik, diger	\N	2025-11-24 12:29:57.013472	2025-11-24 12:29:57.013472	\N
+\.
+
+
+--
+-- TOC entry 5530 (class 0 OID 30395)
+-- Dependencies: 235
+-- Data for Name: detayli_aktiviteler; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.detayli_aktiviteler (id, kategori, kullanici_id, rol, islem_tipi, hedef_tipi, hedef_id, onceki_durum, sonraki_durum, baslik, aciklama, gonderilen_mesaj, etkilenen_kullanici_id, ip_adresi, user_agent, olusturma) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5531 (class 0 OID 30402)
+-- Dependencies: 236
+-- Data for Name: eksik_evraklar; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.eksik_evraklar (id, basvuru_id, basvuru_tipi, kullanici_id, belge_turu_id, eksiklik, son_tarih, hatirlatma_gonderildi, hatirlatma_tarihi, tamamlandi, tamamlanma_tarihi, yuklenen_belge_id, olusturma, guncelleme) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5532 (class 0 OID 30412)
+-- Dependencies: 237
+-- Data for Name: evrak_kontrol; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.evrak_kontrol (id, belge_turu_id, gerekli_durum, zorunlu, aciklama, ornek_url, aktif, sira_no, olusturma) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5533 (class 0 OID 30421)
+-- Dependencies: 238
+-- Data for Name: firma_basvurulari; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.firma_basvurulari (id, firma_id, kullanici_id, firma_adi, basvuran_adi, sektor_id, durum, vergi_no, telefon, eposta, adres, aciklama, notlar, red_nedeni, basvuru_tarihi, inceleme_tarihi, inceleyen_id, onay_tarihi, olusturma, guncelleme) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5534 (class 0 OID 30431)
+-- Dependencies: 239
+-- Data for Name: firma_sertifikalari; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.firma_sertifikalari (id, firma_id, sertifika_turu_id, sertifika_no, veren_kurum, baslangic_tarihi, bitis_tarihi, suresiz, dosya_url, olusturma) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5535 (class 0 OID 30439)
+-- Dependencies: 240
+-- Data for Name: firmalar; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.firmalar (id, kullanici_id, ad, vergi_no, ticaret_sicil_no, telefon, adres, sehir_id, enlem, boylam, sektor_id, durum, dogrulandi, dogrulama_tarihi, dogrulayen_id, website, aciklama, calisan_sayisi, kurulus_yili, olusturma, guncelleme, silinme) FROM stdin;
+7f7f0abc-ebad-462a-a156-5f71524f815a	ff434b0f-dd57-4f17-a64f-ba964caa480a	dfsfds	4564565468779	\N	\N	fddssfd	\N	\N	\N	\N	beklemede	f	\N	\N	\N	\N	\N	\N	2025-11-20 23:24:26.733384	2025-11-20 23:24:26.733384	\N
+bb91b789-3ad3-4060-b89c-33c78c168cd6	c645b4ed-9493-494e-a445-7c268af968d6	Kıvrak	23211111113333333	\N	\N	sfdfsddfdfdfsfsd	\N	\N	\N	\N	beklemede	f	\N	\N	\N	\N	\N	\N	2025-11-20 23:48:26.9352	2025-11-20 23:48:26.9352	\N
+\.
+
+
+--
+-- TOC entry 5536 (class 0 OID 30449)
+-- Dependencies: 241
+-- Data for Name: kullanici_sosyal; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.kullanici_sosyal (id, kullanici_id, saglayici, saglayici_id, profil_url, olusturma) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5537 (class 0 OID 30456)
+-- Dependencies: 242
+-- Data for Name: kullanicilar; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.kullanicilar (id, ad, soyad, eposta, sifre_hash, telefon, rol, durum, eposta_dogrulandi, eposta_dogrulama_token, sifre_sifirlama_token, sifre_sifirlama_gecerlilik, son_giris, avatar_url, sartlar_kabul, sartlar_kabul_tarihi, olusturma, guncelleme, silinme) FROM stdin;
+b75b0b28-7bad-436b-8f42-29cb0c489c7c	İlbilge	Kaşıkçı	selam77@gmail.com	$2b$10$XxnYFdI1LaO2rtniyh/dqugMqRbkNJNB3.EtmXv8mBSK2sTXmg6gO	5489999999	ciftci	beklemede	f	\N	\N	\N	\N	\N	t	2025-11-22 19:55:47.543815	2025-11-22 19:55:47.543815	2025-11-22 19:55:47.543815	\N
+1afb1c72-f164-4fc4-96dc-066cd9dae1cf	Zeliha	Kaşıkçı	selam88@gmail.com	$2b$10$MuvrL/d7SFm.ORyFK3xeMO03iXnyNPF/KLWBTGBr77EhjSug0kop2	8788888888	ciftci	beklemede	f	\N	\N	\N	\N	\N	t	2025-11-22 20:51:03.337512	2025-11-22 20:51:03.337512	2025-11-22 20:51:03.337512	\N
+6019bc92-1886-4e13-9f75-c84f5caf2e7d	Mehmet	Kıvrak	ziraat@yesileksen.com	$2b$10$vjO.MoroqoB/iwEOpUSDTODNzXEdv/TCjba5azI.miWZ8HPjkgDYK	5489877777	ziraat_yoneticisi	aktif	f	\N	\N	\N	2025-11-24 12:29:53.591687	\N	t	2025-11-22 19:54:37.611379	2025-11-22 19:54:37.611379	2025-11-24 12:29:53.591687	\N
+\.
+
+
+--
+-- TOC entry 5538 (class 0 OID 30467)
+-- Dependencies: 243
+-- Data for Name: lisanslar; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.lisanslar (id, ciftlik_id, firma_id, lisans_turu, ad, lisans_no, veren_kurum, baslangic, bitis, suresiz, durum, yenileme_gerekli, yenileme_uyari_gun, belge_url, aciklama, hatirlatici_gonderildi, olusturma, guncelleme) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5539 (class 0 OID 30481)
+-- Dependencies: 244
+-- Data for Name: mesaj_ekleri; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.mesaj_ekleri (id, mesaj_id, dosya_adi, dosya_yolu, dosya_boyutu, dosya_tipi, olusturma) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5540 (class 0 OID 30488)
+-- Dependencies: 245
+-- Data for Name: mesajlar; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.mesajlar (id, gonderen_id, alici_id, konu, mesaj, okundu, okunma_tarihi, ust_mesaj_id, gonderen_sildi, alici_sildi, olusturma) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5541 (class 0 OID 30498)
+-- Dependencies: 246
+-- Data for Name: oda_uyelikleri; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.oda_uyelikleri (id, oda_tipi, ciftlik_id, firma_id, kullanici_id, uyelik_no, baslangic_tarihi, bitis_tarihi, yenileme_tarihi, durum, uyelik_ucreti, odeme_durumu, son_odeme_tarihi, otomatik_yenileme, belge_url, notlar, onaylayan_id, onay_tarihi, olusturma, guncelleme) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5542 (class 0 OID 30509)
+-- Dependencies: 247
+-- Data for Name: rapor_turleri; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.rapor_turleri (id, kod, ad, aciklama, aktif, olusturma) FROM stdin;
+255226e7-832b-4b4b-bf18-227a64b4a4e4	SDG	SDG Raporu	\N	t	2025-11-20 22:57:58.719064
+f50e10a0-4e06-43f8-8811-ab21d938335a	GENEL	Genel Rapor	\N	t	2025-11-20 22:57:58.719064
+934ec692-abbc-44e3-8f9a-21395453931c	FINANSAL	Finansal Rapor	\N	t	2025-11-20 22:57:58.719064
+3135ced5-e90d-47d8-88a3-d08e1392a7b3	CEVRESEL	Çevresel Rapor	\N	t	2025-11-20 22:57:58.719064
+\.
+
+
+--
+-- TOC entry 5543 (class 0 OID 30517)
+-- Dependencies: 248
+-- Data for Name: rapor_verileri; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.rapor_verileri (id, rapor_id, veri_anahtari, veri_degeri, veri_tipi, olusturma) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5544 (class 0 OID 30524)
+-- Dependencies: 249
+-- Data for Name: raporlar; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.raporlar (id, rapor_turu_id, baslik, aciklama, olusturan_id, ciftlik_id, firma_id, baslangic_tarihi, bitis_tarihi, dosya_yolu, herkese_acik, goruntulenme, rapor_tarihi, olusturma) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5545 (class 0 OID 30534)
+-- Dependencies: 250
+-- Data for Name: resmi_bildirim_ekleri; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.resmi_bildirim_ekleri (id, bildirim_id, dosya_adi, dosya_yolu, dosya_tipi, olusturma) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5546 (class 0 OID 30541)
+-- Dependencies: 251
+-- Data for Name: resmi_bildirimler; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.resmi_bildirimler (id, bildirim_no, mesaj_turu, gonderen_id, alici_id, ciftlik_id, firma_id, basvuru_id, konu, mesaj, resmi_tarih, gecerlilik_tarihi, okundu, okunma_tarihi, tebligat_yapildi, tebligat_tarihi, imza_bilgisi, olusturma) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5547 (class 0 OID 30551)
+-- Dependencies: 252
+-- Data for Name: sdg_metrikleri; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.sdg_metrikleri (id, ciftlik_id, firma_id, metrik_tarihi, sdg_hedef_no, metrik_adi, metrik_degeri, birim, aciklama, olusturma, guncelleme) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5548 (class 0 OID 30560)
+-- Dependencies: 253
+-- Data for Name: sehirler; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.sehirler (id, ad, bolge) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5549 (class 0 OID 30563)
+-- Dependencies: 254
+-- Data for Name: sektorler; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.sektorler (id, kod, ad, aciklama, aktif, olusturma) FROM stdin;
+6a8ad0cf-5069-4c6c-b375-6132b39c7538	ENERJI	Enerji	\N	t	2025-11-20 22:57:58.719064
+d3d1f974-1e08-4776-9b8c-13405e1ffa3e	TARIM	Tarım	\N	t	2025-11-20 22:57:58.719064
+f4708df9-837a-4e03-848c-31b9c00e4030	TEKSTIL	Tekstil	\N	t	2025-11-20 22:57:58.719064
+baa63e85-c1dd-44d8-a49e-151a61921c96	GIDA	Gıda	\N	t	2025-11-20 22:57:58.719064
+fa551806-3bd5-4633-8d92-13199cc0559b	KIMYA	Kimya	\N	t	2025-11-20 22:57:58.719064
+e01244c9-a0d8-4406-9355-d19c68543878	INSAAT	İnşaat	\N	t	2025-11-20 22:57:58.719064
+20553668-fb23-4aee-a5c5-4584c1ef13c8	DIGER	Diğer	\N	t	2025-11-20 22:57:58.719064
+\.
+
+
+--
+-- TOC entry 5554 (class 0 OID 30575)
+-- Dependencies: 259
+-- Data for Name: sertifika_turleri; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.sertifika_turleri (id, kod, ad, aciklama, gecerlilik_suresi, aktif, olusturma) FROM stdin;
+e7cb14a4-8bb3-42cd-a7f6-0efb1f8ee327	ORGANIK	Organik Üretim Sertifikası	\N	12	t	2025-11-20 22:57:58.719064
+20754835-fe41-40e3-965b-eb1bfc970978	IYI_TARIM	İyi Tarım Uygulaması	\N	24	t	2025-11-20 22:57:58.719064
+5cff813b-65c2-43c4-8b48-9d9d783be7a2	ISO9001	ISO 9001 Kalite Yönetimi	\N	36	t	2025-11-20 22:57:58.719064
+54d9c20f-6764-428c-b67b-b655efceee48	ISO14001	ISO 14001 Çevre Yönetimi	\N	36	t	2025-11-20 22:57:58.719064
+ecdc9483-c5ec-45a3-bd53-2470be912109	HALAL	Helal Gıda Sertifikası	\N	12	t	2025-11-20 22:57:58.719064
+\.
+
+
+--
+-- TOC entry 5555 (class 0 OID 30583)
+-- Dependencies: 260
+-- Data for Name: siparis_durum_gecmisi; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.siparis_durum_gecmisi (id, siparis_id, durum, notlar, degistiren_id, olusturma) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5556 (class 0 OID 30590)
+-- Dependencies: 261
+-- Data for Name: siparisler; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.siparisler (id, siparis_no, teklif_id, urun_id, ciftlik_id, firma_id, alici_id, satici_id, miktar, birim_id, birim_fiyat, toplam_fiyat, kdv_tutari, kargo_ucreti, genel_toplam, durum, teslimat_adresi, teslimat_tarihi, sevk_tarihi, teslim_tarihi, fatura_no, fatura_tarihi, odeme_yontemi, odeme_durumu, notlar, iptal_nedeni, olusturma, guncelleme) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5557 (class 0 OID 30599)
+-- Dependencies: 262
+-- Data for Name: teklifler; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.teklifler (id, urun_id, ciftlik_id, firma_id, alici_id, satici_id, miktar, birim_id, birim_fiyat, toplam_fiyat, notlar, durum, gecerlilik_tarihi, yanit_tarihi, yanit_notu, olusturma, guncelleme) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5558 (class 0 OID 30608)
+-- Dependencies: 263
+-- Data for Name: urun_basvurulari; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.urun_basvurulari (id, urun_id, ciftlik_id, basvuran_adi, urun_adi, kategori_id, durum, notlar, red_nedeni, basvuru_tarihi, inceleme_tarihi, inceleyen_id, onay_tarihi, olusturma, guncelleme) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5559 (class 0 OID 30618)
+-- Dependencies: 264
+-- Data for Name: urun_kategorileri; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.urun_kategorileri (id, kod, ad, ust_kategori_id, aciklama, aktif, olusturma) FROM stdin;
+fc669c76-4cb4-42a2-a323-e133279340db	ATIK	Çiftlik Atıkları	\N	\N	t	2025-11-20 22:57:58.719064
+287e18ec-56f0-408c-8b21-1a78228f5e55	GUBRE	Organik Gübre	\N	\N	t	2025-11-20 22:57:58.719064
+a55eaaa7-6305-4594-a78a-e13840ce3e88	KOMPOST	Kompost	\N	\N	t	2025-11-20 22:57:58.719064
+074d1060-58e1-4fdf-ad74-6cee1ad78c42	BIYOKUTLE	Biyokütle	\N	\N	t	2025-11-20 22:57:58.719064
+f680d9e6-0358-42a8-8e76-d452aeed5c14	TOPRAK	Toprak İyileştirici	\N	\N	t	2025-11-20 22:57:58.719064
+f44f8d10-8a64-46b1-b33a-d8dbeae16e02	YEM	Yem	\N	\N	t	2025-11-20 22:57:58.719064
+f585a4c4-ce94-4e4f-811f-e1e5f5cc7447	ENERJI	Enerji	\N	\N	t	2025-11-20 22:57:58.719064
+\.
+
+
+--
+-- TOC entry 5560 (class 0 OID 30626)
+-- Dependencies: 265
+-- Data for Name: urun_ozellikleri; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.urun_ozellikleri (id, urun_id, anahtar, deger, birim, olusturma) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5561 (class 0 OID 30631)
+-- Dependencies: 266
+-- Data for Name: urun_resimleri; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.urun_resimleri (id, urun_id, resim_url, sira_no, baslik, ana_resim, olusturma) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5562 (class 0 OID 30640)
+-- Dependencies: 267
+-- Data for Name: urun_sertifikalari; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.urun_sertifikalari (id, urun_id, sertifika_turu_id, sertifika_no, baslangic_tarihi, bitis_tarihi, dosya_url, olusturma) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5563 (class 0 OID 30647)
+-- Dependencies: 268
+-- Data for Name: urunler; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.urunler (id, ciftlik_id, kategori_id, ad, aciklama, birim_id, birim_fiyat, mevcut_miktar, min_siparis_miktari, durum, onerilir, goruntulenme, olusturma, guncelleme, silinme) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5571 (class 0 OID 0)
+-- Dependencies: 255
+-- Name: seq_bildirim_no; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.seq_bildirim_no', 1, false);
+
+
+--
+-- TOC entry 5572 (class 0 OID 0)
+-- Dependencies: 256
+-- Name: seq_sanayi_uyelik; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.seq_sanayi_uyelik', 1, false);
+
+
+--
+-- TOC entry 5573 (class 0 OID 0)
+-- Dependencies: 257
+-- Name: seq_siparis_no; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.seq_siparis_no', 1, false);
+
+
+--
+-- TOC entry 5574 (class 0 OID 0)
+-- Dependencies: 258
+-- Name: seq_ziraat_uyelik; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.seq_ziraat_uyelik', 1, false);
+
+
+--
+-- TOC entry 5157 (class 2606 OID 30668)
+-- Name: aktivite_metadata aktivite_metadata_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.aktivite_metadata
+    ADD CONSTRAINT aktivite_metadata_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5159 (class 2606 OID 30670)
+-- Name: aktiviteler aktiviteler_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.aktiviteler
+    ADD CONSTRAINT aktiviteler_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5161 (class 2606 OID 30672)
+-- Name: atik_cevre_etkileri atik_cevre_etkileri_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.atik_cevre_etkileri
+    ADD CONSTRAINT atik_cevre_etkileri_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5163 (class 2606 OID 30674)
+-- Name: atik_islemleri atik_islemleri_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.atik_islemleri
+    ADD CONSTRAINT atik_islemleri_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5165 (class 2606 OID 30676)
+-- Name: atik_turleri atik_turleri_kod_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.atik_turleri
+    ADD CONSTRAINT atik_turleri_kod_key UNIQUE (kod);
+
+
+--
+-- TOC entry 5167 (class 2606 OID 30678)
+-- Name: atik_turleri atik_turleri_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.atik_turleri
+    ADD CONSTRAINT atik_turleri_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5169 (class 2606 OID 30680)
+-- Name: ayarlar ayarlar_anahtar_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.ayarlar
+    ADD CONSTRAINT ayarlar_anahtar_key UNIQUE (anahtar);
+
+
+--
+-- TOC entry 5171 (class 2606 OID 30682)
+-- Name: ayarlar ayarlar_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.ayarlar
+    ADD CONSTRAINT ayarlar_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5173 (class 2606 OID 30684)
+-- Name: belge_turleri belge_turleri_kod_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.belge_turleri
+    ADD CONSTRAINT belge_turleri_kod_key UNIQUE (kod);
+
+
+--
+-- TOC entry 5175 (class 2606 OID 30686)
+-- Name: belge_turleri belge_turleri_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.belge_turleri
+    ADD CONSTRAINT belge_turleri_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5177 (class 2606 OID 30688)
+-- Name: belgeler belgeler_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.belgeler
+    ADD CONSTRAINT belgeler_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5179 (class 2606 OID 30690)
+-- Name: bildirim_metadata bildirim_metadata_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.bildirim_metadata
+    ADD CONSTRAINT bildirim_metadata_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5181 (class 2606 OID 30692)
+-- Name: bildirim_turleri bildirim_turleri_kod_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.bildirim_turleri
+    ADD CONSTRAINT bildirim_turleri_kod_key UNIQUE (kod);
+
+
+--
+-- TOC entry 5183 (class 2606 OID 30694)
+-- Name: bildirim_turleri bildirim_turleri_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.bildirim_turleri
+    ADD CONSTRAINT bildirim_turleri_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5185 (class 2606 OID 30696)
+-- Name: bildirimler bildirimler_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.bildirimler
+    ADD CONSTRAINT bildirimler_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5189 (class 2606 OID 30698)
+-- Name: birimler birimler_kod_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.birimler
+    ADD CONSTRAINT birimler_kod_key UNIQUE (kod);
+
+
+--
+-- TOC entry 5191 (class 2606 OID 30700)
+-- Name: birimler birimler_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.birimler
+    ADD CONSTRAINT birimler_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5193 (class 2606 OID 30702)
+-- Name: ciftlik_atik_kapasiteleri ciftlik_atik_kapasiteleri_ciftlik_id_atik_turu_id_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.ciftlik_atik_kapasiteleri
+    ADD CONSTRAINT ciftlik_atik_kapasiteleri_ciftlik_id_atik_turu_id_key UNIQUE (ciftlik_id, atik_turu_id);
+
+
+--
+-- TOC entry 5195 (class 2606 OID 30704)
+-- Name: ciftlik_atik_kapasiteleri ciftlik_atik_kapasiteleri_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.ciftlik_atik_kapasiteleri
+    ADD CONSTRAINT ciftlik_atik_kapasiteleri_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5197 (class 2606 OID 30706)
+-- Name: ciftlik_basvurulari ciftlik_basvurulari_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.ciftlik_basvurulari
+    ADD CONSTRAINT ciftlik_basvurulari_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5199 (class 2606 OID 30708)
+-- Name: ciftlik_sertifikalari ciftlik_sertifikalari_ciftlik_id_sertifika_turu_id_sertifik_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.ciftlik_sertifikalari
+    ADD CONSTRAINT ciftlik_sertifikalari_ciftlik_id_sertifika_turu_id_sertifik_key UNIQUE (ciftlik_id, sertifika_turu_id, sertifika_no);
+
+
+--
+-- TOC entry 5201 (class 2606 OID 30710)
+-- Name: ciftlik_sertifikalari ciftlik_sertifikalari_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.ciftlik_sertifikalari
+    ADD CONSTRAINT ciftlik_sertifikalari_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5203 (class 2606 OID 30712)
+-- Name: ciftlikler ciftlikler_kayit_no_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.ciftlikler
+    ADD CONSTRAINT ciftlikler_kayit_no_key UNIQUE (kayit_no);
+
+
+--
+-- TOC entry 5205 (class 2606 OID 30714)
+-- Name: ciftlikler ciftlikler_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.ciftlikler
+    ADD CONSTRAINT ciftlikler_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5210 (class 2606 OID 30716)
+-- Name: detayli_aktiviteler detayli_aktiviteler_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.detayli_aktiviteler
+    ADD CONSTRAINT detayli_aktiviteler_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5212 (class 2606 OID 30718)
+-- Name: eksik_evraklar eksik_evraklar_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.eksik_evraklar
+    ADD CONSTRAINT eksik_evraklar_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5214 (class 2606 OID 30720)
+-- Name: evrak_kontrol evrak_kontrol_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.evrak_kontrol
+    ADD CONSTRAINT evrak_kontrol_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5216 (class 2606 OID 30722)
+-- Name: firma_basvurulari firma_basvurulari_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.firma_basvurulari
+    ADD CONSTRAINT firma_basvurulari_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5218 (class 2606 OID 30724)
+-- Name: firma_sertifikalari firma_sertifikalari_firma_id_sertifika_turu_id_sertifika_no_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.firma_sertifikalari
+    ADD CONSTRAINT firma_sertifikalari_firma_id_sertifika_turu_id_sertifika_no_key UNIQUE (firma_id, sertifika_turu_id, sertifika_no);
+
+
+--
+-- TOC entry 5220 (class 2606 OID 30726)
+-- Name: firma_sertifikalari firma_sertifikalari_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.firma_sertifikalari
+    ADD CONSTRAINT firma_sertifikalari_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5222 (class 2606 OID 30728)
+-- Name: firmalar firmalar_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.firmalar
+    ADD CONSTRAINT firmalar_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5224 (class 2606 OID 30730)
+-- Name: firmalar firmalar_vergi_no_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.firmalar
+    ADD CONSTRAINT firmalar_vergi_no_key UNIQUE (vergi_no);
+
+
+--
+-- TOC entry 5229 (class 2606 OID 30732)
+-- Name: kullanici_sosyal kullanici_sosyal_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.kullanici_sosyal
+    ADD CONSTRAINT kullanici_sosyal_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5231 (class 2606 OID 30734)
+-- Name: kullanici_sosyal kullanici_sosyal_saglayici_saglayici_id_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.kullanici_sosyal
+    ADD CONSTRAINT kullanici_sosyal_saglayici_saglayici_id_key UNIQUE (saglayici, saglayici_id);
+
+
+--
+-- TOC entry 5236 (class 2606 OID 30736)
+-- Name: kullanicilar kullanicilar_eposta_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.kullanicilar
+    ADD CONSTRAINT kullanicilar_eposta_key UNIQUE (eposta);
+
+
+--
+-- TOC entry 5238 (class 2606 OID 30738)
+-- Name: kullanicilar kullanicilar_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.kullanicilar
+    ADD CONSTRAINT kullanicilar_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5240 (class 2606 OID 30740)
+-- Name: lisanslar lisanslar_lisans_no_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.lisanslar
+    ADD CONSTRAINT lisanslar_lisans_no_key UNIQUE (lisans_no);
+
+
+--
+-- TOC entry 5242 (class 2606 OID 30742)
+-- Name: lisanslar lisanslar_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.lisanslar
+    ADD CONSTRAINT lisanslar_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5244 (class 2606 OID 30744)
+-- Name: mesaj_ekleri mesaj_ekleri_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.mesaj_ekleri
+    ADD CONSTRAINT mesaj_ekleri_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5246 (class 2606 OID 30746)
+-- Name: mesajlar mesajlar_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.mesajlar
+    ADD CONSTRAINT mesajlar_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5248 (class 2606 OID 30748)
+-- Name: oda_uyelikleri oda_uyelikleri_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.oda_uyelikleri
+    ADD CONSTRAINT oda_uyelikleri_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5250 (class 2606 OID 30750)
+-- Name: oda_uyelikleri oda_uyelikleri_uyelik_no_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.oda_uyelikleri
+    ADD CONSTRAINT oda_uyelikleri_uyelik_no_key UNIQUE (uyelik_no);
+
+
+--
+-- TOC entry 5252 (class 2606 OID 30752)
+-- Name: rapor_turleri rapor_turleri_kod_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.rapor_turleri
+    ADD CONSTRAINT rapor_turleri_kod_key UNIQUE (kod);
+
+
+--
+-- TOC entry 5254 (class 2606 OID 30754)
+-- Name: rapor_turleri rapor_turleri_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.rapor_turleri
+    ADD CONSTRAINT rapor_turleri_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5256 (class 2606 OID 30756)
+-- Name: rapor_verileri rapor_verileri_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.rapor_verileri
+    ADD CONSTRAINT rapor_verileri_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5258 (class 2606 OID 30758)
+-- Name: raporlar raporlar_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.raporlar
+    ADD CONSTRAINT raporlar_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5260 (class 2606 OID 30760)
+-- Name: resmi_bildirim_ekleri resmi_bildirim_ekleri_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.resmi_bildirim_ekleri
+    ADD CONSTRAINT resmi_bildirim_ekleri_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5262 (class 2606 OID 30762)
+-- Name: resmi_bildirimler resmi_bildirimler_bildirim_no_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.resmi_bildirimler
+    ADD CONSTRAINT resmi_bildirimler_bildirim_no_key UNIQUE (bildirim_no);
+
+
+--
+-- TOC entry 5264 (class 2606 OID 30764)
+-- Name: resmi_bildirimler resmi_bildirimler_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.resmi_bildirimler
+    ADD CONSTRAINT resmi_bildirimler_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5266 (class 2606 OID 30766)
+-- Name: sdg_metrikleri sdg_metrikleri_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.sdg_metrikleri
+    ADD CONSTRAINT sdg_metrikleri_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5268 (class 2606 OID 30768)
+-- Name: sehirler sehirler_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.sehirler
+    ADD CONSTRAINT sehirler_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5270 (class 2606 OID 30770)
+-- Name: sektorler sektorler_kod_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.sektorler
+    ADD CONSTRAINT sektorler_kod_key UNIQUE (kod);
+
+
+--
+-- TOC entry 5272 (class 2606 OID 30772)
+-- Name: sektorler sektorler_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.sektorler
+    ADD CONSTRAINT sektorler_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5274 (class 2606 OID 30774)
+-- Name: sertifika_turleri sertifika_turleri_kod_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.sertifika_turleri
+    ADD CONSTRAINT sertifika_turleri_kod_key UNIQUE (kod);
+
+
+--
+-- TOC entry 5276 (class 2606 OID 30776)
+-- Name: sertifika_turleri sertifika_turleri_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.sertifika_turleri
+    ADD CONSTRAINT sertifika_turleri_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5278 (class 2606 OID 30778)
+-- Name: siparis_durum_gecmisi siparis_durum_gecmisi_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.siparis_durum_gecmisi
+    ADD CONSTRAINT siparis_durum_gecmisi_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5282 (class 2606 OID 30780)
+-- Name: siparisler siparisler_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.siparisler
+    ADD CONSTRAINT siparisler_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5284 (class 2606 OID 30782)
+-- Name: siparisler siparisler_siparis_no_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.siparisler
+    ADD CONSTRAINT siparisler_siparis_no_key UNIQUE (siparis_no);
+
+
+--
+-- TOC entry 5288 (class 2606 OID 30784)
+-- Name: teklifler teklifler_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.teklifler
+    ADD CONSTRAINT teklifler_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5290 (class 2606 OID 30786)
+-- Name: urun_basvurulari urun_basvurulari_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.urun_basvurulari
+    ADD CONSTRAINT urun_basvurulari_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5293 (class 2606 OID 30788)
+-- Name: urun_kategorileri urun_kategorileri_kod_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.urun_kategorileri
+    ADD CONSTRAINT urun_kategorileri_kod_key UNIQUE (kod);
+
+
+--
+-- TOC entry 5295 (class 2606 OID 30790)
+-- Name: urun_kategorileri urun_kategorileri_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.urun_kategorileri
+    ADD CONSTRAINT urun_kategorileri_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5297 (class 2606 OID 30792)
+-- Name: urun_ozellikleri urun_ozellikleri_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.urun_ozellikleri
+    ADD CONSTRAINT urun_ozellikleri_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5299 (class 2606 OID 30794)
+-- Name: urun_ozellikleri urun_ozellikleri_urun_id_anahtar_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.urun_ozellikleri
+    ADD CONSTRAINT urun_ozellikleri_urun_id_anahtar_key UNIQUE (urun_id, anahtar);
+
+
+--
+-- TOC entry 5301 (class 2606 OID 30796)
+-- Name: urun_resimleri urun_resimleri_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.urun_resimleri
+    ADD CONSTRAINT urun_resimleri_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5303 (class 2606 OID 30798)
+-- Name: urun_sertifikalari urun_sertifikalari_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.urun_sertifikalari
+    ADD CONSTRAINT urun_sertifikalari_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5307 (class 2606 OID 30800)
+-- Name: urunler urunler_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.urunler
+    ADD CONSTRAINT urunler_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5186 (class 1259 OID 30801)
+-- Name: idx_bildirimler_kullanici; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_bildirimler_kullanici ON public.bildirimler USING btree (kullanici_id);
+
+
+--
+-- TOC entry 5187 (class 1259 OID 30802)
+-- Name: idx_bildirimler_okundu; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_bildirimler_okundu ON public.bildirimler USING btree (okundu);
+
+
+--
+-- TOC entry 5206 (class 1259 OID 30803)
+-- Name: idx_ciftlikler_durum; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_ciftlikler_durum ON public.ciftlikler USING btree (durum);
+
+
+--
+-- TOC entry 5207 (class 1259 OID 30804)
+-- Name: idx_ciftlikler_kullanici; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_ciftlikler_kullanici ON public.ciftlikler USING btree (kullanici_id);
+
+
+--
+-- TOC entry 5208 (class 1259 OID 30805)
+-- Name: idx_ciftlikler_sehir; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_ciftlikler_sehir ON public.ciftlikler USING btree (sehir_id);
+
+
+--
+-- TOC entry 5225 (class 1259 OID 30806)
+-- Name: idx_firmalar_durum; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_firmalar_durum ON public.firmalar USING btree (durum);
+
+
+--
+-- TOC entry 5226 (class 1259 OID 30807)
+-- Name: idx_firmalar_kullanici; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_firmalar_kullanici ON public.firmalar USING btree (kullanici_id);
+
+
+--
+-- TOC entry 5227 (class 1259 OID 30808)
+-- Name: idx_firmalar_sektor; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_firmalar_sektor ON public.firmalar USING btree (sektor_id);
+
+
+--
+-- TOC entry 5232 (class 1259 OID 30809)
+-- Name: idx_kullanicilar_durum; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_kullanicilar_durum ON public.kullanicilar USING btree (durum);
+
+
+--
+-- TOC entry 5233 (class 1259 OID 30810)
+-- Name: idx_kullanicilar_eposta; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_kullanicilar_eposta ON public.kullanicilar USING btree (eposta);
+
+
+--
+-- TOC entry 5234 (class 1259 OID 30811)
+-- Name: idx_kullanicilar_rol; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_kullanicilar_rol ON public.kullanicilar USING btree (rol);
+
+
+--
+-- TOC entry 5279 (class 1259 OID 30812)
+-- Name: idx_siparisler_durum; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_siparisler_durum ON public.siparisler USING btree (durum);
+
+
+--
+-- TOC entry 5280 (class 1259 OID 30813)
+-- Name: idx_siparisler_no; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_siparisler_no ON public.siparisler USING btree (siparis_no);
+
+
+--
+-- TOC entry 5285 (class 1259 OID 30814)
+-- Name: idx_teklifler_firma; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_teklifler_firma ON public.teklifler USING btree (firma_id);
+
+
+--
+-- TOC entry 5286 (class 1259 OID 30815)
+-- Name: idx_teklifler_urun; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_teklifler_urun ON public.teklifler USING btree (urun_id);
+
+
+--
+-- TOC entry 5304 (class 1259 OID 30816)
+-- Name: idx_urunler_ciftlik; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_urunler_ciftlik ON public.urunler USING btree (ciftlik_id);
+
+
+--
+-- TOC entry 5305 (class 1259 OID 30817)
+-- Name: idx_urunler_durum; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_urunler_durum ON public.urunler USING btree (durum);
+
+
+--
+-- TOC entry 5291 (class 1259 OID 30818)
+-- Name: idx_urunler_kategori; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_urunler_kategori ON public.urun_kategorileri USING btree (id);
+
+
+--
+-- TOC entry 5512 (class 2618 OID 30661)
+-- Name: v_aktif_ciftlikler _RETURN; Type: RULE; Schema: public; Owner: postgres
+--
+
+CREATE OR REPLACE VIEW public.v_aktif_ciftlikler AS
+ SELECT c.id,
+    c.kullanici_id,
+    c.ad,
+    c.kayit_no,
+    c.telefon,
+    c.adres,
+    c.sehir_id,
+    c.enlem,
+    c.boylam,
+    c.alan,
+    c.durum,
+    c.kayit_tarihi,
+    c.yillik_gelir,
+    c.uretim_kapasitesi,
+    c.organik,
+    c.iyi_tarim,
+    c.aciklama,
+    c.website,
+    c.olusturma,
+    c.guncelleme,
+    c.silinme,
+    (((k.ad)::text || ' '::text) || (k.soyad)::text) AS sahip_adi,
+    k.eposta,
+    k.telefon AS kullanici_telefon,
+    s.ad AS sehir_adi,
+    count(DISTINCT u.id) AS urun_sayisi
+   FROM (((public.ciftlikler c
+     JOIN public.kullanicilar k ON ((c.kullanici_id = k.id)))
+     LEFT JOIN public.sehirler s ON ((c.sehir_id = s.id)))
+     LEFT JOIN public.urunler u ON ((c.id = u.ciftlik_id)))
+  WHERE ((c.durum = 'aktif'::public.durum_tipi) AND (c.silinme IS NULL))
+  GROUP BY c.id, k.id, s.id;
+
+
+--
+-- TOC entry 5363 (class 2620 OID 30820)
+-- Name: resmi_bildirimler trg_bildirim_no; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_bildirim_no BEFORE INSERT ON public.resmi_bildirimler FOR EACH ROW EXECUTE FUNCTION public.bildirim_no_olustur();
+
+
+--
+-- TOC entry 5358 (class 2620 OID 30821)
+-- Name: ciftlikler trg_ciftlikler_guncelleme; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_ciftlikler_guncelleme BEFORE UPDATE ON public.ciftlikler FOR EACH ROW EXECUTE FUNCTION public.guncelleme_tarihi_func();
+
+
+--
+-- TOC entry 5359 (class 2620 OID 30822)
+-- Name: firmalar trg_firmalar_guncelleme; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_firmalar_guncelleme BEFORE UPDATE ON public.firmalar FOR EACH ROW EXECUTE FUNCTION public.guncelleme_tarihi_func();
+
+
+--
+-- TOC entry 5360 (class 2620 OID 30823)
+-- Name: kullanicilar trg_kullanicilar_guncelleme; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_kullanicilar_guncelleme BEFORE UPDATE ON public.kullanicilar FOR EACH ROW EXECUTE FUNCTION public.guncelleme_tarihi_func();
+
+
+--
+-- TOC entry 5361 (class 2620 OID 30824)
+-- Name: oda_uyelikleri trg_oda_uyelikleri_guncelleme; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_oda_uyelikleri_guncelleme BEFORE UPDATE ON public.oda_uyelikleri FOR EACH ROW EXECUTE FUNCTION public.guncelleme_tarihi_func();
+
+
+--
+-- TOC entry 5364 (class 2620 OID 30825)
+-- Name: siparisler trg_siparis_no; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_siparis_no BEFORE INSERT ON public.siparisler FOR EACH ROW EXECUTE FUNCTION public.siparis_no_olustur();
+
+
+--
+-- TOC entry 5365 (class 2620 OID 30826)
+-- Name: siparisler trg_siparisler_guncelleme; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_siparisler_guncelleme BEFORE UPDATE ON public.siparisler FOR EACH ROW EXECUTE FUNCTION public.guncelleme_tarihi_func();
+
+
+--
+-- TOC entry 5366 (class 2620 OID 30827)
+-- Name: urunler trg_urunler_guncelleme; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_urunler_guncelleme BEFORE UPDATE ON public.urunler FOR EACH ROW EXECUTE FUNCTION public.guncelleme_tarihi_func();
+
+
+--
+-- TOC entry 5362 (class 2620 OID 30828)
+-- Name: oda_uyelikleri trg_uyelik_no; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_uyelik_no BEFORE INSERT ON public.oda_uyelikleri FOR EACH ROW EXECUTE FUNCTION public.uyelik_no_olustur();
+
+
+--
+-- TOC entry 5308 (class 2606 OID 30829)
+-- Name: aktivite_metadata aktivite_metadata_aktivite_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.aktivite_metadata
+    ADD CONSTRAINT aktivite_metadata_aktivite_id_fkey FOREIGN KEY (aktivite_id) REFERENCES public.aktiviteler(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5309 (class 2606 OID 30834)
+-- Name: atik_cevre_etkileri atik_cevre_etkileri_atik_islem_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.atik_cevre_etkileri
+    ADD CONSTRAINT atik_cevre_etkileri_atik_islem_id_fkey FOREIGN KEY (atik_islem_id) REFERENCES public.atik_islemleri(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5310 (class 2606 OID 30839)
+-- Name: atik_islemleri atik_islemleri_atik_turu_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.atik_islemleri
+    ADD CONSTRAINT atik_islemleri_atik_turu_id_fkey FOREIGN KEY (atik_turu_id) REFERENCES public.atik_turleri(id);
+
+
+--
+-- TOC entry 5311 (class 2606 OID 30844)
+-- Name: atik_islemleri atik_islemleri_birim_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.atik_islemleri
+    ADD CONSTRAINT atik_islemleri_birim_id_fkey FOREIGN KEY (birim_id) REFERENCES public.birimler(id);
+
+
+--
+-- TOC entry 5312 (class 2606 OID 30849)
+-- Name: atik_islemleri atik_islemleri_firma_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.atik_islemleri
+    ADD CONSTRAINT atik_islemleri_firma_id_fkey FOREIGN KEY (firma_id) REFERENCES public.firmalar(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5313 (class 2606 OID 30854)
+-- Name: atik_islemleri atik_islemleri_urun_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.atik_islemleri
+    ADD CONSTRAINT atik_islemleri_urun_id_fkey FOREIGN KEY (urun_id) REFERENCES public.urunler(id);
+
+
+--
+-- TOC entry 5314 (class 2606 OID 30859)
+-- Name: belgeler belgeler_belge_turu_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.belgeler
+    ADD CONSTRAINT belgeler_belge_turu_id_fkey FOREIGN KEY (belge_turu_id) REFERENCES public.belge_turleri(id);
+
+
+--
+-- TOC entry 5315 (class 2606 OID 30864)
+-- Name: belgeler belgeler_firma_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.belgeler
+    ADD CONSTRAINT belgeler_firma_id_fkey FOREIGN KEY (firma_id) REFERENCES public.firmalar(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5316 (class 2606 OID 30869)
+-- Name: bildirim_metadata bildirim_metadata_bildirim_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.bildirim_metadata
+    ADD CONSTRAINT bildirim_metadata_bildirim_id_fkey FOREIGN KEY (bildirim_id) REFERENCES public.bildirimler(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5317 (class 2606 OID 30874)
+-- Name: bildirimler bildirimler_bildirim_turu_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.bildirimler
+    ADD CONSTRAINT bildirimler_bildirim_turu_id_fkey FOREIGN KEY (bildirim_turu_id) REFERENCES public.bildirim_turleri(id);
+
+
+--
+-- TOC entry 5318 (class 2606 OID 30879)
+-- Name: ciftlik_atik_kapasiteleri ciftlik_atik_kapasiteleri_atik_turu_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.ciftlik_atik_kapasiteleri
+    ADD CONSTRAINT ciftlik_atik_kapasiteleri_atik_turu_id_fkey FOREIGN KEY (atik_turu_id) REFERENCES public.atik_turleri(id);
+
+
+--
+-- TOC entry 5319 (class 2606 OID 30884)
+-- Name: ciftlik_atik_kapasiteleri ciftlik_atik_kapasiteleri_birim_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.ciftlik_atik_kapasiteleri
+    ADD CONSTRAINT ciftlik_atik_kapasiteleri_birim_id_fkey FOREIGN KEY (birim_id) REFERENCES public.birimler(id);
+
+
+--
+-- TOC entry 5320 (class 2606 OID 30889)
+-- Name: ciftlik_sertifikalari ciftlik_sertifikalari_sertifika_turu_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.ciftlik_sertifikalari
+    ADD CONSTRAINT ciftlik_sertifikalari_sertifika_turu_id_fkey FOREIGN KEY (sertifika_turu_id) REFERENCES public.sertifika_turleri(id);
+
+
+--
+-- TOC entry 5321 (class 2606 OID 30894)
+-- Name: ciftlikler ciftlikler_sehir_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.ciftlikler
+    ADD CONSTRAINT ciftlikler_sehir_id_fkey FOREIGN KEY (sehir_id) REFERENCES public.sehirler(id);
+
+
+--
+-- TOC entry 5322 (class 2606 OID 30899)
+-- Name: eksik_evraklar eksik_evraklar_belge_turu_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.eksik_evraklar
+    ADD CONSTRAINT eksik_evraklar_belge_turu_id_fkey FOREIGN KEY (belge_turu_id) REFERENCES public.belge_turleri(id);
+
+
+--
+-- TOC entry 5323 (class 2606 OID 30904)
+-- Name: eksik_evraklar eksik_evraklar_yuklenen_belge_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.eksik_evraklar
+    ADD CONSTRAINT eksik_evraklar_yuklenen_belge_id_fkey FOREIGN KEY (yuklenen_belge_id) REFERENCES public.belgeler(id);
+
+
+--
+-- TOC entry 5324 (class 2606 OID 30909)
+-- Name: evrak_kontrol evrak_kontrol_belge_turu_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.evrak_kontrol
+    ADD CONSTRAINT evrak_kontrol_belge_turu_id_fkey FOREIGN KEY (belge_turu_id) REFERENCES public.belge_turleri(id);
+
+
+--
+-- TOC entry 5325 (class 2606 OID 30914)
+-- Name: firma_basvurulari firma_basvurulari_firma_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.firma_basvurulari
+    ADD CONSTRAINT firma_basvurulari_firma_id_fkey FOREIGN KEY (firma_id) REFERENCES public.firmalar(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5326 (class 2606 OID 30919)
+-- Name: firma_basvurulari firma_basvurulari_sektor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.firma_basvurulari
+    ADD CONSTRAINT firma_basvurulari_sektor_id_fkey FOREIGN KEY (sektor_id) REFERENCES public.sektorler(id);
+
+
+--
+-- TOC entry 5327 (class 2606 OID 30924)
+-- Name: firma_sertifikalari firma_sertifikalari_firma_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.firma_sertifikalari
+    ADD CONSTRAINT firma_sertifikalari_firma_id_fkey FOREIGN KEY (firma_id) REFERENCES public.firmalar(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5328 (class 2606 OID 30929)
+-- Name: firma_sertifikalari firma_sertifikalari_sertifika_turu_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.firma_sertifikalari
+    ADD CONSTRAINT firma_sertifikalari_sertifika_turu_id_fkey FOREIGN KEY (sertifika_turu_id) REFERENCES public.sertifika_turleri(id);
+
+
+--
+-- TOC entry 5329 (class 2606 OID 30934)
+-- Name: firmalar firmalar_sehir_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.firmalar
+    ADD CONSTRAINT firmalar_sehir_id_fkey FOREIGN KEY (sehir_id) REFERENCES public.sehirler(id);
+
+
+--
+-- TOC entry 5330 (class 2606 OID 30939)
+-- Name: firmalar firmalar_sektor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.firmalar
+    ADD CONSTRAINT firmalar_sektor_id_fkey FOREIGN KEY (sektor_id) REFERENCES public.sektorler(id);
+
+
+--
+-- TOC entry 5331 (class 2606 OID 30944)
+-- Name: lisanslar lisanslar_firma_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.lisanslar
+    ADD CONSTRAINT lisanslar_firma_id_fkey FOREIGN KEY (firma_id) REFERENCES public.firmalar(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5332 (class 2606 OID 30949)
+-- Name: mesaj_ekleri mesaj_ekleri_mesaj_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.mesaj_ekleri
+    ADD CONSTRAINT mesaj_ekleri_mesaj_id_fkey FOREIGN KEY (mesaj_id) REFERENCES public.mesajlar(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5333 (class 2606 OID 30954)
+-- Name: mesajlar mesajlar_ust_mesaj_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.mesajlar
+    ADD CONSTRAINT mesajlar_ust_mesaj_id_fkey FOREIGN KEY (ust_mesaj_id) REFERENCES public.mesajlar(id);
+
+
+--
+-- TOC entry 5334 (class 2606 OID 30959)
+-- Name: oda_uyelikleri oda_uyelikleri_firma_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.oda_uyelikleri
+    ADD CONSTRAINT oda_uyelikleri_firma_id_fkey FOREIGN KEY (firma_id) REFERENCES public.firmalar(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5335 (class 2606 OID 30964)
+-- Name: rapor_verileri rapor_verileri_rapor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.rapor_verileri
+    ADD CONSTRAINT rapor_verileri_rapor_id_fkey FOREIGN KEY (rapor_id) REFERENCES public.raporlar(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5336 (class 2606 OID 30969)
+-- Name: raporlar raporlar_firma_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.raporlar
+    ADD CONSTRAINT raporlar_firma_id_fkey FOREIGN KEY (firma_id) REFERENCES public.firmalar(id);
+
+
+--
+-- TOC entry 5337 (class 2606 OID 30974)
+-- Name: raporlar raporlar_rapor_turu_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.raporlar
+    ADD CONSTRAINT raporlar_rapor_turu_id_fkey FOREIGN KEY (rapor_turu_id) REFERENCES public.rapor_turleri(id);
+
+
+--
+-- TOC entry 5338 (class 2606 OID 30979)
+-- Name: resmi_bildirim_ekleri resmi_bildirim_ekleri_bildirim_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.resmi_bildirim_ekleri
+    ADD CONSTRAINT resmi_bildirim_ekleri_bildirim_id_fkey FOREIGN KEY (bildirim_id) REFERENCES public.resmi_bildirimler(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5339 (class 2606 OID 30984)
+-- Name: resmi_bildirimler resmi_bildirimler_firma_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.resmi_bildirimler
+    ADD CONSTRAINT resmi_bildirimler_firma_id_fkey FOREIGN KEY (firma_id) REFERENCES public.firmalar(id);
+
+
+--
+-- TOC entry 5340 (class 2606 OID 30989)
+-- Name: sdg_metrikleri sdg_metrikleri_firma_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.sdg_metrikleri
+    ADD CONSTRAINT sdg_metrikleri_firma_id_fkey FOREIGN KEY (firma_id) REFERENCES public.firmalar(id);
+
+
+--
+-- TOC entry 5341 (class 2606 OID 30994)
+-- Name: siparis_durum_gecmisi siparis_durum_gecmisi_siparis_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.siparis_durum_gecmisi
+    ADD CONSTRAINT siparis_durum_gecmisi_siparis_id_fkey FOREIGN KEY (siparis_id) REFERENCES public.siparisler(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5342 (class 2606 OID 30999)
+-- Name: siparisler siparisler_birim_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.siparisler
+    ADD CONSTRAINT siparisler_birim_id_fkey FOREIGN KEY (birim_id) REFERENCES public.birimler(id);
+
+
+--
+-- TOC entry 5343 (class 2606 OID 31004)
+-- Name: siparisler siparisler_firma_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.siparisler
+    ADD CONSTRAINT siparisler_firma_id_fkey FOREIGN KEY (firma_id) REFERENCES public.firmalar(id);
+
+
+--
+-- TOC entry 5344 (class 2606 OID 31009)
+-- Name: siparisler siparisler_teklif_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.siparisler
+    ADD CONSTRAINT siparisler_teklif_id_fkey FOREIGN KEY (teklif_id) REFERENCES public.teklifler(id);
+
+
+--
+-- TOC entry 5345 (class 2606 OID 31014)
+-- Name: siparisler siparisler_urun_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.siparisler
+    ADD CONSTRAINT siparisler_urun_id_fkey FOREIGN KEY (urun_id) REFERENCES public.urunler(id);
+
+
+--
+-- TOC entry 5346 (class 2606 OID 31019)
+-- Name: teklifler teklifler_birim_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.teklifler
+    ADD CONSTRAINT teklifler_birim_id_fkey FOREIGN KEY (birim_id) REFERENCES public.birimler(id);
+
+
+--
+-- TOC entry 5347 (class 2606 OID 31024)
+-- Name: teklifler teklifler_firma_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.teklifler
+    ADD CONSTRAINT teklifler_firma_id_fkey FOREIGN KEY (firma_id) REFERENCES public.firmalar(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5348 (class 2606 OID 31029)
+-- Name: teklifler teklifler_urun_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.teklifler
+    ADD CONSTRAINT teklifler_urun_id_fkey FOREIGN KEY (urun_id) REFERENCES public.urunler(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5349 (class 2606 OID 31034)
+-- Name: urun_basvurulari urun_basvurulari_kategori_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.urun_basvurulari
+    ADD CONSTRAINT urun_basvurulari_kategori_id_fkey FOREIGN KEY (kategori_id) REFERENCES public.urun_kategorileri(id);
+
+
+--
+-- TOC entry 5350 (class 2606 OID 31039)
+-- Name: urun_basvurulari urun_basvurulari_urun_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.urun_basvurulari
+    ADD CONSTRAINT urun_basvurulari_urun_id_fkey FOREIGN KEY (urun_id) REFERENCES public.urunler(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5351 (class 2606 OID 31044)
+-- Name: urun_kategorileri urun_kategorileri_ust_kategori_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.urun_kategorileri
+    ADD CONSTRAINT urun_kategorileri_ust_kategori_id_fkey FOREIGN KEY (ust_kategori_id) REFERENCES public.urun_kategorileri(id);
+
+
+--
+-- TOC entry 5352 (class 2606 OID 31049)
+-- Name: urun_ozellikleri urun_ozellikleri_urun_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.urun_ozellikleri
+    ADD CONSTRAINT urun_ozellikleri_urun_id_fkey FOREIGN KEY (urun_id) REFERENCES public.urunler(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5353 (class 2606 OID 31054)
+-- Name: urun_resimleri urun_resimleri_urun_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.urun_resimleri
+    ADD CONSTRAINT urun_resimleri_urun_id_fkey FOREIGN KEY (urun_id) REFERENCES public.urunler(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5354 (class 2606 OID 31059)
+-- Name: urun_sertifikalari urun_sertifikalari_sertifika_turu_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.urun_sertifikalari
+    ADD CONSTRAINT urun_sertifikalari_sertifika_turu_id_fkey FOREIGN KEY (sertifika_turu_id) REFERENCES public.sertifika_turleri(id);
+
+
+--
+-- TOC entry 5355 (class 2606 OID 31064)
+-- Name: urun_sertifikalari urun_sertifikalari_urun_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.urun_sertifikalari
+    ADD CONSTRAINT urun_sertifikalari_urun_id_fkey FOREIGN KEY (urun_id) REFERENCES public.urunler(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5356 (class 2606 OID 31069)
+-- Name: urunler urunler_birim_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.urunler
+    ADD CONSTRAINT urunler_birim_id_fkey FOREIGN KEY (birim_id) REFERENCES public.birimler(id);
+
+
+--
+-- TOC entry 5357 (class 2606 OID 31074)
+-- Name: urunler urunler_kategori_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.urunler
+    ADD CONSTRAINT urunler_kategori_id_fkey FOREIGN KEY (kategori_id) REFERENCES public.urun_kategorileri(id);
+
+
+-- Completed on 2025-11-24 13:09:22
+
+--
+-- PostgreSQL database dump complete
+--
+
+\unrestrict CNMnBd8IUKhgB6AeRxtuavqx8ZdDk11N1NwlPDZGrcivPVbTTvbEJnUw535P59z
+

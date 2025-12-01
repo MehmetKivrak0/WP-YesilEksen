@@ -36,12 +36,7 @@ const mobileLinkClasses = (isActive: boolean) =>
       : 'border-[#E8F5E9] bg-[#E8F5E9] text-[#2E7D32] hover:border-[#2E7D32]',
   ].join(' ');
 
-type ZrtnNavbarProps = {
-  logoUrl?: string;
-  farmName?: string;
-};
-
-function ZrtnNavbar({ logoUrl, farmName }: ZrtnNavbarProps = {}) {
+function ZrtnNavbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
   const location = useLocation();
@@ -152,32 +147,13 @@ function ZrtnNavbar({ logoUrl, farmName }: ZrtnNavbarProps = {}) {
               scrollToSection('#overview');
             }}
           >
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#2E7D32] overflow-hidden">
-              {logoUrl ? (
-                <img 
-                  src={logoUrl} 
-                  alt={farmName || 'Çiftlik Logosu'}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    // Resim yüklenemezse default ikonu göster
-                    e.currentTarget.style.display = 'none';
-                    const parent = e.currentTarget.parentElement;
-                    if (parent && !parent.querySelector('.material-symbols-outlined')) {
-                      const icon = document.createElement('span');
-                      icon.className = 'material-symbols-outlined text-2xl text-white';
-                      icon.textContent = 'eco';
-                      parent.appendChild(icon);
-                    }
-                  }}
-                />
-              ) : (
-                <span className="material-symbols-outlined text-2xl text-white">eco</span>
-              )}
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#2E7D32]">
+              <span className="material-symbols-outlined text-2xl text-white">eco</span>
             </div>
             <div className="flex flex-col">
               <span className="text-xs font-medium text-[#2E7D32]">ZİRAAT ODASI</span>
-              <span className="text-lg font-bold text-[#424242]">{farmName || 'Yönetim Paneli'}</span>
-              <span className="text-xs text-[#616161]">{farmName ? 'Çiftlik Detayları' : 'Sürdürülebilir tarım için kontrol merkezi'}</span>
+              <span className="text-lg font-bold text-[#424242]">Yönetim Paneli</span>
+              <span className="text-xs text-[#616161]">Sürdürülebilir tarım için kontrol merkezi</span>
             </div>
           </Link>
         </div>

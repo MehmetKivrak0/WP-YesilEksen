@@ -7,10 +7,10 @@
     "dev": "vite --host",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview",
-    "server": "cd server && npm start"
+    "preview": "vite preview"
   },
   "dependencies": {
+    "@tomtom-international/web-sdk-maps": "^6.25.0",
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",

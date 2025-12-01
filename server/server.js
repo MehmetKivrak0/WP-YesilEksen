@@ -1,6 +1,7 @@
 // Server başlatma dosyası
 // ÖNEMLİ: dotenv en başta yüklenmeli
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const express = require('express');
 const cors = require('cors');
@@ -10,48 +11,8 @@ const { Pool } = require('pg');
 const multer = require('multer');
 
 const app = express();
-const path = require('path');
 
-// Static dosyalar - Helmet'ten ÖNCE serve et (CORS sorununu önlemek için)
-app.use('/uploads', (req, res, next) => {
-    // CORS header'larını ekle
-    const origin = req.headers.origin;
-    const allowedOrigins = [
-        'http://localhost:5174',
-        'http://localhost:5173',
-        process.env.CLIENT_URL
-    ].filter(Boolean);
-    
-    if (!origin || allowedOrigins.includes(origin)) {
-        res.setHeader('Access-Control-Allow-Origin', origin || '*');
-    }
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-    
-    if (req.method === 'OPTIONS') {
-        return res.sendStatus(200);
-    }
-    next();
-}, express.static(path.join(__dirname, 'uploads'), {
-    setHeaders: (res, filePath) => {
-        // Resim dosyaları için doğru Content-Type
-        if (filePath.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-            res.setHeader('Content-Type', filePath.match(/\.webp$/i) ? 'image/webp' :
-                         filePath.match(/\.png$/i) ? 'image/png' :
-                         filePath.match(/\.gif$/i) ? 'image/gif' : 'image/jpeg');
-        }
-        // Cache header'ları
-        res.setHeader('Cache-Control', 'public, max-age=31536000');
-    }
-}));
-
-// Helmet'i yapılandır - static dosyalar için daha esnek ayarlar
-app.use(helmet({
-    crossOriginResourcePolicy: { policy: "cross-origin" },
-    crossOriginEmbedderPolicy: false
-}));
-
+app.use(helmet());
 app.use(cors({
     origin: function (origin, callback) {
         // İzin verilen origin'ler
@@ -83,6 +44,7 @@ app.use('/api/auth', require('./src/routes/authRoutes.js'));
 app.use('/api/ciftlik', require('./src/routes/ciftlikRoutes.js'));
 app.use('/api/firma', require('./src/routes/firmaRoutes.js'));
 app.use('/api/ziraat', require('./src/routes/ziraatRoutes.js'));
+app.use('/api/sanayi', require('./src/routes/sanayiRoutes.js'));
 app.use('/api/documents', require('./src/routes/documentRoutes.js'));
 
 //HEALTH CHECK şuna yarar: 

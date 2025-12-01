@@ -1,55 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import FrmNavbar from '../../components/frmnavbar';
+import { firmaService, type BasvuruDurumu } from '../../services/firmaService';
+import api from '../../services/api';
 
-type DocumentStatus = 'Onaylandı' | 'Eksik' | 'Beklemede' | 'Reddedildi';
+type DocumentStatus = 'Onaylandı' | 'Eksik' | 'Beklemede' | 'Reddedildi' | 'İncelemede';
+type ApplicationStatus = 'Beklemede' | 'İncelemede' | 'Onaylandı' | 'Reddedildi' | 'Eksik Evrak';
 
-type CompanyApplicationDocument = {
-  name: string;
-  status: DocumentStatus;
-  url?: string;
-  adminNote?: string;
-};
-
-type CompanyApplication = {
-  id: string;
-  companyName: string;
-  sector: string;
-  status: 'Beklemede' | 'İncelemede' | 'Onaylandı' | 'Reddedildi' | 'Eksik Evrak';
-  submittedAt: string;
-  lastUpdate: string;
-  adminNotes: string;
-  contact: {
-    name: string;
-    phone: string;
-    email: string;
-  };
-  documents: CompanyApplicationDocument[];
-};
-
-// Örnek veri - gerçek uygulamada API'den gelecek
-const myApplication: CompanyApplication = {
-  id: 'C-2024-001',
-  companyName: 'Eko Enerji A.Ş.',
-  sector: 'Yenilenebilir Enerji',
-  status: 'İncelemede',
-  submittedAt: '2024-02-12',
-  lastUpdate: '2 saat önce',
-  adminNotes: 'Belgeleriniz inceleme aşamasındadır. Faaliyet Belgesi güncel değil, lütfen 2024 yılına ait güncel belgeyi yükleyin.',
-  contact: {
-    name: 'Ahmet Yılmaz',
-    phone: '+90 532 123 45 67',
-    email: 'ahmet.yilmaz@ekoenerji.com',
-  },
-  documents: [
-    { name: 'Ticaret Sicil Gazetesi', status: 'Onaylandı', url: '/docs/ticaret-sicil.pdf' },
-    { name: 'Vergi Levhası', status: 'Onaylandı', url: '/docs/vergi-levhasi.pdf' },
-    { name: 'İmza Sirküleri', status: 'Onaylandı', url: '/docs/imza-sirkuleri.pdf' },
-    { name: 'Faaliyet Belgesi', status: 'Reddedildi', adminNote: 'Belge 2023 yılına ait. Lütfen 2024 yılına ait güncel Faaliyet Belgesi yükleyiniz.' },
-    { name: 'Oda Kayıt Sicil Sureti', status: 'Beklemede', url: '/docs/oda-kayit.pdf', adminNote: 'Belge inceleme aşamasında.' },
-  ],
-};
-
-const statusConfig = {
+const statusConfig: Record<ApplicationStatus, { color: string; icon: string; bgColor: string; borderColor: string }> = {
   'Beklemede': { color: 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200', icon: 'schedule', bgColor: 'bg-gray-50 dark:bg-gray-900/20', borderColor: 'border-gray-200 dark:border-gray-800' },
   'İncelemede': { color: 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200', icon: 'manage_search', bgColor: 'bg-blue-50 dark:bg-blue-900/20', borderColor: 'border-blue-200 dark:border-blue-800' },
   'Onaylandı': { color: 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200', icon: 'check_circle', bgColor: 'bg-green-50 dark:bg-green-900/20', borderColor: 'border-green-200 dark:border-green-800' },
@@ -57,24 +14,235 @@ const statusConfig = {
   'Eksik Evrak': { color: 'bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-200', icon: 'warning', bgColor: 'bg-orange-50 dark:bg-orange-900/20', borderColor: 'border-orange-200 dark:border-orange-800' },
 };
 
-const documentStatusConfig = {
+const documentStatusConfig: Record<DocumentStatus, { color: string; icon: string }> = {
   'Onaylandı': { color: 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200', icon: 'check_circle' },
   'Beklemede': { color: 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200', icon: 'pending' },
+  'İncelemede': { color: 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200', icon: 'manage_search' },
   'Eksik': { color: 'bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-200', icon: 'warning' },
   'Reddedildi': { color: 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200', icon: 'cancel' },
 };
 
 function FirmaBasvuruDurum() {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [basvuru, setBasvuru] = useState<BasvuruDurumu | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<{ [key: string]: File | null }>({});
   const [updateMessage, setUpdateMessage] = useState('');
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
-  const config = statusConfig[myApplication.status];
+  const [submitting, setSubmitting] = useState(false);
+  const [downloadingDoc, setDownloadingDoc] = useState<string | null>(null);
+  
+  // Belge görüntüleme modal state'leri
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [viewingDocUrl, setViewingDocUrl] = useState<string | null>(null);
+  const [viewingDocName, setViewingDocName] = useState<string>('');
+  const [viewingDocType, setViewingDocType] = useState<string>('');
+  const [loadingView, setLoadingView] = useState(false);
 
-  const approvedDocs = myApplication.documents.filter(d => d.status === 'Onaylandı').length;
-  const totalDocs = myApplication.documents.length;
-  const progress = (approvedDocs / totalDocs) * 100;
+  // Belge görüntüleme (popup modal)
+  const handleViewDocument = async (dosyaUrl: string, belgeAdi: string) => {
+    try {
+      setLoadingView(true);
+      setViewingDocName(belgeAdi);
+      setShowViewModal(true);
+      
+      // dosyaUrl: /api/documents/file/... şeklinde geliyor
+      // api base URL: /api olduğu için /api'yi kaldırıyoruz
+      const cleanUrl = dosyaUrl.replace(/^\/api/, '');
+      
+      const response = await api.get(cleanUrl, {
+        responseType: 'blob'
+      });
+      
+      const contentType = response.headers['content-type'] || 'application/octet-stream';
+      setViewingDocType(contentType);
+      
+      const blob = new Blob([response.data], { type: contentType });
+      const url = window.URL.createObjectURL(blob);
+      setViewingDocUrl(url);
+    } catch (err: any) {
+      console.error('Belge görüntüleme hatası:', err);
+      setError('Belge görüntülenemedi');
+      setShowViewModal(false);
+    } finally {
+      setLoadingView(false);
+    }
+  };
+  
+  // Modal kapatma
+  const closeViewModal = () => {
+    if (viewingDocUrl) {
+      window.URL.revokeObjectURL(viewingDocUrl);
+    }
+    setShowViewModal(false);
+    setViewingDocUrl(null);
+    setViewingDocName('');
+    setViewingDocType('');
+  };
+
+  // Belge indirme
+  const handleDownloadDocument = async (dosyaUrl: string, belgeAdi: string) => {
+    try {
+      setDownloadingDoc(dosyaUrl);
+      
+      // dosyaUrl: /api/documents/file/... şeklinde geliyor
+      // api base URL: /api olduğu için /api'yi kaldırıyoruz
+      const cleanUrl = dosyaUrl.replace(/^\/api/, '');
+      
+      const response = await api.get(`${cleanUrl}?download=true`, {
+        responseType: 'blob'
+      });
+      
+      const blob = new Blob([response.data], { type: response.headers['content-type'] });
+      const url = window.URL.createObjectURL(blob);
+      
+      // Dosya adını belirle
+      const contentDisposition = response.headers['content-disposition'];
+      let filename = belgeAdi || 'belge';
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (match) filename = decodeURIComponent(match[1]);
+      }
+      
+      // Dosya uzantısını ekle (yoksa)
+      if (!filename.includes('.')) {
+        const contentType = response.headers['content-type'];
+        if (contentType?.includes('pdf')) filename += '.pdf';
+        else if (contentType?.includes('jpeg') || contentType?.includes('jpg')) filename += '.jpg';
+        else if (contentType?.includes('png')) filename += '.png';
+      }
+      
+      // İndirme linkini oluştur ve tıkla
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // URL'i temizle
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error('Belge indirme hatası:', err);
+      setError('Belge indirilemedi');
+    } finally {
+      setDownloadingDoc(null);
+    }
+  };
+
+  // Başvuru durumunu yükle
+  useEffect(() => {
+    loadBasvuruDurumu();
+  }, []);
+
+  const loadBasvuruDurumu = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await firmaService.getBasvuruDurumu();
+      if (response.success) {
+        setBasvuru(response.basvuru);
+      } else {
+        setError('Başvuru bilgileri yüklenemedi');
+      }
+    } catch (err: any) {
+      console.error('Başvuru durumu yükleme hatası:', err);
+      if (err.response?.status === 404) {
+        setError('Henüz bir başvurunuz bulunmamaktadır.');
+      } else {
+        setError(err.response?.data?.message || 'Başvuru bilgileri yüklenemedi');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('tr-TR', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const getRelativeTime = (dateString?: string) => {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return 'Az önce';
+    if (diffMins < 60) return `${diffMins} dakika önce`;
+    if (diffHours < 24) return `${diffHours} saat önce`;
+    if (diffDays < 7) return `${diffDays} gün önce`;
+    return formatDate(dateString);
+  };
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="font-display min-h-screen w-full bg-background-light dark:bg-background-dark text-content-light dark:text-content-dark flex flex-col">
+        <FrmNavbar />
+        <main className="flex-1 py-10 px-4 sm:px-6 lg:px-8 pt-24">
+          <div className="max-w-7xl mx-auto flex items-center justify-center min-h-[60vh]">
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-subtle-light dark:text-subtle-dark">Başvuru durumu yükleniyor...</p>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // Error state veya başvuru yok
+  if (error || !basvuru) {
+    return (
+      <div className="font-display min-h-screen w-full bg-background-light dark:bg-background-dark text-content-light dark:text-content-dark flex flex-col">
+        <FrmNavbar />
+        <main className="flex-1 py-10 px-4 sm:px-6 lg:px-8 pt-24">
+          <div className="max-w-7xl mx-auto">
+            <div className="mb-8">
+              <h1 className="text-4xl font-bold text-content-light dark:text-content-dark mb-2">Başvuru Durumum</h1>
+              <p className="text-lg text-subtle-light dark:text-subtle-dark">
+                Sanayi Odası üyelik başvurunuzun durumunu takip edin
+              </p>
+            </div>
+            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-8 text-center">
+              <span className="material-symbols-outlined text-5xl text-yellow-600 dark:text-yellow-400 mb-4 block">info</span>
+              <h2 className="text-xl font-semibold text-yellow-800 dark:text-yellow-200 mb-2">
+                {error || 'Başvuru Bulunamadı'}
+              </h2>
+              <p className="text-yellow-700 dark:text-yellow-300 mb-6">
+                Henüz bir üyelik başvurusu yapmadıysanız, kayıt sırasında başvurunuz oluşturulmuş olmalıdır.
+              </p>
+              <button
+                onClick={loadBasvuruDurumu}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors font-medium"
+              >
+                <span className="material-symbols-outlined">refresh</span>
+                Yenile
+              </button>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  const config = statusConfig[basvuru.durum as ApplicationStatus] || statusConfig['Beklemede'];
+  const approvedDocs = basvuru.belgeler.filter(d => d.durum === 'Onaylandı').length;
+  const totalDocs = basvuru.belgeler.length;
+  const progress = totalDocs > 0 ? (approvedDocs / totalDocs) * 100 : 0;
 
   return (
     <div className="font-display min-h-screen w-full bg-background-light dark:bg-background-dark text-content-light dark:text-content-dark flex flex-col">
@@ -96,21 +264,22 @@ function FirmaBasvuruDurum() {
                 <div className="flex items-center gap-3 mb-4">
                   <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-lg font-semibold ${config.color}`}>
                     <span className="material-symbols-outlined text-2xl">{config.icon}</span>
-                    {myApplication.status}
+                    {basvuru.durum}
                   </span>
                 </div>
-                <h2 className="text-3xl font-bold text-content-light dark:text-content-dark mb-2">{myApplication.companyName}</h2>
+                <h2 className="text-3xl font-bold text-content-light dark:text-content-dark mb-2">{basvuru.firmaAdi}</h2>
                 <p className="text-subtle-light dark:text-subtle-dark mb-4">
-                  Başvuru No: {myApplication.id} • Sektör: {myApplication.sector}
+                  Başvuru No: {basvuru.id.substring(0, 8).toUpperCase()} • Sektör: {basvuru.sektor}
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                  <p><span className="font-medium">Başvuru Tarihi:</span> {myApplication.submittedAt}</p>
-                  <p><span className="font-medium">Son Güncelleme:</span> {myApplication.lastUpdate}</p>
-                  <p><span className="font-medium">Yetkili Kişi:</span> {myApplication.contact.name}</p>
-                  <p><span className="font-medium">İletişim:</span> {myApplication.contact.phone}</p>
+                  <p><span className="font-medium">Başvuru Tarihi:</span> {formatDate(basvuru.basvuruTarihi)}</p>
+                  <p><span className="font-medium">Son Güncelleme:</span> {getRelativeTime(basvuru.sonGuncelleme)}</p>
+                  <p><span className="font-medium">Yetkili Kişi:</span> {basvuru.yetkili.ad} {basvuru.yetkili.soyad}</p>
+                  <p><span className="font-medium">İletişim:</span> {basvuru.yetkili.telefon}</p>
                 </div>
               </div>
               
+              {totalDocs > 0 && (
               <div className="flex flex-col items-center gap-4">
                 <div className="relative w-32 h-32">
                   <svg className="w-full h-full transform -rotate-90">
@@ -148,11 +317,12 @@ function FirmaBasvuruDurum() {
                   Detaylı İncele
                 </button>
               </div>
+              )}
             </div>
           </div>
 
           {/* Admin Notes */}
-          {myApplication.adminNotes && (
+          {basvuru.adminNotu && (
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 mb-8">
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-lg">
@@ -160,49 +330,100 @@ function FirmaBasvuruDurum() {
                 </div>
                 <div className="flex-1">
                   <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-2">Sanayi Odası Mesajı</h3>
-                  <p className="text-blue-800 dark:text-blue-200">{myApplication.adminNotes}</p>
+                  <p className="text-blue-800 dark:text-blue-200">{basvuru.adminNotu}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Red Nedeni */}
+          {basvuru.redNedeni && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-6 mb-8">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-red-100 dark:bg-red-900/40 rounded-lg">
+                  <span className="material-symbols-outlined text-2xl text-red-600 dark:text-red-400">error</span>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-red-900 dark:text-red-100 mb-2">Başvuru Ret Nedeni</h3>
+                  <p className="text-red-800 dark:text-red-200">{basvuru.redNedeni}</p>
                 </div>
               </div>
             </div>
           )}
 
           {/* Documents Overview */}
+          {basvuru.belgeler.length > 0 && (
           <div className="bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-xl p-6">
             <h3 className="text-xl font-semibold text-content-light dark:text-content-dark mb-4 flex items-center gap-2">
               <span className="material-symbols-outlined text-primary">description</span>
               Belgeler ve Durumları
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {myApplication.documents.map((doc, idx) => {
-                const docConfig = documentStatusConfig[doc.status];
+                {basvuru.belgeler.map((doc) => {
+                  const docConfig = documentStatusConfig[doc.durum as DocumentStatus] || documentStatusConfig['Beklemede'];
                 return (
                   <div
-                    key={idx}
+                      key={doc.id}
                     className="bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-lg p-4 hover:shadow-md transition-shadow"
                   >
                     <div className="flex items-start justify-between mb-2">
                       <span className="material-symbols-outlined text-2xl text-subtle-light dark:text-subtle-dark">description</span>
                       <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${docConfig.color}`}>
                         <span className="material-symbols-outlined text-sm">{docConfig.icon}</span>
-                        {doc.status}
+                          {doc.durum}
                       </span>
                     </div>
-                    <p className="font-medium text-content-light dark:text-content-dark text-sm mb-2">{doc.name}</p>
-                    {doc.url && doc.status === 'Onaylandı' && (
-                      <a
-                        href={doc.url}
-                        download
-                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                      >
-                        <span className="material-symbols-outlined text-sm">download</span>
-                        İndir
-                      </a>
+                      <p className="font-medium text-content-light dark:text-content-dark text-sm mb-2">{doc.ad}</p>
+                      {doc.zorunlu && (
+                        <span className="text-xs text-red-500 dark:text-red-400">Zorunlu</span>
+                      )}
+                      {doc.dosyaUrl && (
+                        <div className="flex items-center gap-2 mt-2">
+                          <button
+                            onClick={() => handleViewDocument(doc.dosyaUrl!, doc.ad)}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs text-white bg-blue-500 hover:bg-blue-600 rounded transition-colors"
+                            title="Görüntüle"
+                          >
+                            <span className="material-symbols-outlined text-sm">visibility</span>
+                            Görüntüle
+                          </button>
+                          <button
+                            onClick={() => handleDownloadDocument(doc.dosyaUrl!, doc.ad)}
+                            disabled={downloadingDoc === doc.dosyaUrl}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs text-white bg-primary hover:bg-primary/90 rounded transition-colors disabled:opacity-50"
+                            title="İndir"
+                          >
+                            {downloadingDoc === doc.dosyaUrl ? (
+                              <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            ) : (
+                              <span className="material-symbols-outlined text-sm">download</span>
+                            )}
+                            İndir
+                          </button>
+                        </div>
+                      )}
+                      {doc.adminNotu && (
+                        <p className="text-xs text-subtle-light dark:text-subtle-dark mt-2 italic">
+                          Not: {doc.adminNotu}
+                        </p>
                     )}
                   </div>
                 );
               })}
             </div>
           </div>
+          )}
+
+          {/* Belge yoksa bilgi mesajı */}
+          {basvuru.belgeler.length === 0 && (
+            <div className="bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-xl p-8 text-center">
+              <span className="material-symbols-outlined text-4xl text-subtle-light dark:text-subtle-dark mb-4 block">folder_open</span>
+              <h3 className="text-lg font-semibold text-content-light dark:text-content-dark mb-2">Belge Bulunamadı</h3>
+              <p className="text-subtle-light dark:text-subtle-dark">
+                Başvurunuza ait yüklenmiş belge bulunmamaktadır.
+              </p>
+            </div>
+          )}
         </div>
       </main>
 
@@ -213,7 +434,7 @@ function FirmaBasvuruDurum() {
             <div className="p-6 border-b border-border-light dark:border-border-dark flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-semibold text-content-light dark:text-content-dark">Başvuru Detayları</h2>
-                <p className="text-sm text-subtle-light dark:text-subtle-dark">Başvuru No: {myApplication.id}</p>
+                <p className="text-sm text-subtle-light dark:text-subtle-dark">Başvuru No: {basvuru.id.substring(0, 8).toUpperCase()}</p>
               </div>
               <button
                 onClick={() => setShowDetailModal(false)}
@@ -228,70 +449,86 @@ function FirmaBasvuruDurum() {
               <div className="bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-lg p-4">
                 <h3 className="font-semibold text-content-light dark:text-content-dark mb-3">Firma Bilgileri</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                  <p><span className="font-medium">Firma Adı:</span> {myApplication.companyName}</p>
-                  <p><span className="font-medium">Sektör:</span> {myApplication.sector}</p>
-                  <p><span className="font-medium">Yetkili:</span> {myApplication.contact.name}</p>
-                  <p><span className="font-medium">Telefon:</span> {myApplication.contact.phone}</p>
-                  <p><span className="font-medium">E-posta:</span> {myApplication.contact.email}</p>
+                  <p><span className="font-medium">Firma Adı:</span> {basvuru.firmaAdi}</p>
+                  <p><span className="font-medium">Sektör:</span> {basvuru.sektor}</p>
+                  <p><span className="font-medium">Yetkili:</span> {basvuru.yetkili.ad} {basvuru.yetkili.soyad}</p>
+                  <p><span className="font-medium">Telefon:</span> {basvuru.yetkili.telefon}</p>
+                  <p><span className="font-medium">E-posta:</span> {basvuru.yetkili.eposta}</p>
                   <p className="flex items-center gap-2">
                     <span className="font-medium">Durum:</span>
                     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${config.color}`}>
                       <span className="material-symbols-outlined text-sm">{config.icon}</span>
-                      {myApplication.status}
+                      {basvuru.durum}
                     </span>
                   </p>
                 </div>
               </div>
 
               {/* Documents Detail */}
+              {basvuru.belgeler.length > 0 && (
               <div>
                 <h3 className="text-lg font-semibold text-content-light dark:text-content-dark mb-4">Belgeler ve Durumları</h3>
                 <div className="space-y-3">
-                  {myApplication.documents.map((doc, idx) => {
-                    const docConfig = documentStatusConfig[doc.status];
+                    {basvuru.belgeler.map((doc) => {
+                      const docConfig = documentStatusConfig[doc.durum as DocumentStatus] || documentStatusConfig['Beklemede'];
                     return (
                       <div
-                        key={idx}
+                          key={doc.id}
                         className="bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-lg p-4"
                       >
                         <div className="flex items-start justify-between gap-4 mb-2">
                           <div className="flex-1">
-                            <p className="font-medium text-content-light dark:text-content-dark mb-1">{doc.name}</p>
+                              <p className="font-medium text-content-light dark:text-content-dark mb-1">{doc.ad}</p>
                             <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${docConfig.color}`}>
                               <span className="material-symbols-outlined text-sm">{docConfig.icon}</span>
-                              {doc.status}
+                                {doc.durum}
                             </span>
                           </div>
-                          {doc.url && doc.status === 'Onaylandı' && (
-                            <a
-                              href={doc.url}
-                              download
-                              className="inline-flex items-center gap-1 px-3 py-2 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors text-sm font-medium"
-                            >
-                              <span className="material-symbols-outlined text-base">download</span>
-                              İndir
-                            </a>
-                          )}
+                            {doc.dosyaUrl && (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleViewDocument(doc.dosyaUrl!, doc.ad)}
+                                  className="inline-flex items-center gap-1 px-3 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors text-sm font-medium"
+                                  title="Görüntüle"
+                                >
+                                  <span className="material-symbols-outlined text-base">visibility</span>
+                                  Görüntüle
+                                </button>
+                                <button
+                                  onClick={() => handleDownloadDocument(doc.dosyaUrl!, doc.ad)}
+                                  disabled={downloadingDoc === doc.dosyaUrl}
+                                  className="inline-flex items-center gap-1 px-3 py-2 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors text-sm font-medium disabled:opacity-50"
+                                  title="İndir"
+                                >
+                                  {downloadingDoc === doc.dosyaUrl ? (
+                                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                                  ) : (
+                                    <span className="material-symbols-outlined text-base">download</span>
+                                  )}
+                                  İndir
+                                </button>
+                              </div>
+                            )}
                         </div>
-                        {doc.adminNote && (
+                          {(doc.adminNotu || doc.redNedeni) && (
                           <div className={`mt-3 p-3 rounded-lg ${
-                            doc.status === 'Reddedildi' 
+                              doc.durum === 'Reddedildi' 
                               ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800' 
                               : 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
                           }`}>
                             <p className={`text-xs font-medium mb-1 ${
-                              doc.status === 'Reddedildi' 
+                                doc.durum === 'Reddedildi' 
                                 ? 'text-red-800 dark:text-red-200' 
                                 : 'text-blue-800 dark:text-blue-200'
                             }`}>
-                              {doc.status === 'Reddedildi' ? 'Reddetme Nedeni:' : 'Sanayi Odası Notu:'}
+                                {doc.durum === 'Reddedildi' ? 'Reddetme Nedeni:' : 'Sanayi Odası Notu:'}
                             </p>
                             <p className={`text-sm ${
-                              doc.status === 'Reddedildi' 
+                                doc.durum === 'Reddedildi' 
                                 ? 'text-red-700 dark:text-red-300' 
                                 : 'text-blue-700 dark:text-blue-300'
                             }`}>
-                              {doc.adminNote}
+                                {doc.redNedeni || doc.adminNotu}
                             </p>
                           </div>
                         )}
@@ -300,9 +537,10 @@ function FirmaBasvuruDurum() {
                   })}
                 </div>
               </div>
+              )}
 
               {/* Action Buttons */}
-              {(myApplication.status === 'Eksik Evrak' || myApplication.status === 'İncelemede') && (
+              {(basvuru.durum === 'Eksik Evrak' || basvuru.durum === 'İncelemede') && (
                 <div className="flex justify-end gap-3 pt-4 border-t border-border-light dark:border-border-dark">
                   <button
                     onClick={() => setShowDetailModal(false)}
@@ -366,30 +604,30 @@ function FirmaBasvuruDurum() {
               <div className="bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-lg p-4">
                 <h3 className="font-semibold text-content-light dark:text-content-dark mb-3 flex items-center gap-2">
                   <span className="material-symbols-outlined text-primary">business</span>
-                  {myApplication.companyName}
+                  {basvuru.firmaAdi}
                 </h3>
                 <p className="text-sm text-subtle-light dark:text-subtle-dark mb-4">
-                  Başvuru No: {myApplication.id}
+                  Başvuru No: {basvuru.id.substring(0, 8).toUpperCase()}
                 </p>
 
                 {/* Belge Yükleme Alanları */}
                 <div className="space-y-4">
-                  {myApplication.documents
-                    .filter(doc => doc.status === 'Reddedildi' || doc.status === 'Eksik' || doc.status === 'Beklemede')
-                    .map((doc, idx) => {
-                      const docKey = doc.name;
+                  {basvuru.belgeler
+                    .filter(doc => doc.durum === 'Reddedildi' || doc.durum === 'Eksik' || doc.durum === 'Beklemede')
+                    .map((doc) => {
+                      const docKey = doc.id;
                       return (
-                        <div key={idx} className="space-y-2">
+                        <div key={doc.id} className="space-y-2">
                           <div className="flex items-center justify-between">
                             <label className="text-sm font-medium text-content-light dark:text-content-dark flex items-center gap-2">
                               <span className="material-symbols-outlined text-base text-subtle-light dark:text-subtle-dark">description</span>
-                              {doc.name}
-                              {doc.status === 'Reddedildi' && (
+                              {doc.ad}
+                              {doc.durum === 'Reddedildi' && (
                                 <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200">
                                   Reddedildi
                                 </span>
                               )}
-                              {doc.status === 'Beklemede' && (
+                              {doc.durum === 'Beklemede' && (
                                 <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-200">
                                   İncelemede
                                 </span>
@@ -402,13 +640,13 @@ function FirmaBasvuruDurum() {
                               </span>
                             )}
                           </div>
-                          {doc.adminNote && (
+                          {(doc.adminNotu || doc.redNedeni) && (
                             <div className={`text-xs p-2 rounded ${
-                              doc.status === 'Reddedildi'
+                              doc.durum === 'Reddedildi'
                                 ? 'text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
                                 : 'text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
                             }`}>
-                              <span className="font-medium">Not: </span>{doc.adminNote}
+                              <span className="font-medium">Not: </span>{doc.redNedeni || doc.adminNotu}
                             </div>
                           )}
                           <label className="group relative flex flex-col border-2 border-dashed border-border-light dark:border-border-dark hover:border-primary dark:hover:border-primary bg-background-light dark:bg-background-dark rounded-lg p-4 transition-all duration-300 cursor-pointer">
@@ -466,27 +704,61 @@ function FirmaBasvuruDurum() {
                 İptal
               </button>
               <button
-                onClick={() => {
-                  // Gerçek uygulamada API çağrısı yapılacak
-                  console.log('Yüklenen dosyalar:', uploadedFiles);
-                  console.log('Mesaj:', updateMessage);
-                  
+                onClick={async () => {
+                  try {
+                    setSubmitting(true);
+                    
+                    // Yüklenecek belgeleri hazırla
+                    const belgeler = Object.entries(uploadedFiles)
+                      .filter(([_, file]) => file !== null)
+                      .map(([belgeId, file]) => ({ belgeId, file: file as File }));
+                    
+                    if (belgeler.length === 0) {
+                      setError('Lütfen en az bir belge seçin');
+                      return;
+                    }
+                    
+                    // API çağrısı yap
+                    const response = await firmaService.updateBasvuruBelgeler(belgeler, updateMessage || undefined);
+                    
+                    if (response.success) {
                   // Başarı mesajını göster
                   setShowUpdateModal(false);
                   setShowSuccessMessage(true);
                   setUploadedFiles({});
                   setUpdateMessage('');
+                      
+                      // Başvuru durumunu yeniden yükle
+                      loadBasvuruDurumu();
                   
                   // 3 saniye sonra mesajı gizle
                   setTimeout(() => {
                     setShowSuccessMessage(false);
                   }, 3000);
+                    } else {
+                      setError(response.message || 'Belgeler güncellenemedi');
+                    }
+                  } catch (err: any) {
+                    console.error('Belge güncelleme hatası:', err);
+                    setError(err.response?.data?.message || 'Belgeler güncellenemedi');
+                  } finally {
+                    setSubmitting(false);
+                  }
                 }}
-                disabled={Object.keys(uploadedFiles).length === 0}
+                disabled={Object.keys(uploadedFiles).filter(k => uploadedFiles[k] !== null).length === 0 || submitting}
                 className="inline-flex items-center gap-2 px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
+                {submitting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Gönderiliyor...
+                  </>
+                ) : (
+                  <>
                 <span className="material-symbols-outlined text-base">send</span>
                 Gönder ve Sanayi Odası'na Bildir
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -518,9 +790,99 @@ function FirmaBasvuruDurum() {
         </div>
       )}
 
+      {/* Belge Görüntüleme Modal */}
+      {showViewModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-[90vw] h-[85vh] max-w-5xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-primary/10 rounded-lg">
+                  <span className="material-symbols-outlined text-2xl text-primary">description</span>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">{viewingDocName}</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Belge Önizleme</p>
+                </div>
+              </div>
+              <button
+                onClick={closeViewModal}
+                className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 transition-all"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            
+            {/* Modal Content */}
+            <div className="flex-1 p-4 overflow-auto bg-gray-100 dark:bg-gray-800/30">
+              {loadingView ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="flex flex-col items-center gap-4">
+                    <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-gray-600 dark:text-gray-400">Belge yükleniyor...</p>
+                  </div>
+                </div>
+              ) : viewingDocUrl ? (
+                <div className="h-full flex items-center justify-center">
+                  {viewingDocType.includes('pdf') ? (
+                    <iframe
+                      src={viewingDocUrl}
+                      className="w-full h-full rounded-lg border border-gray-300 dark:border-gray-600"
+                      title={viewingDocName}
+                    />
+                  ) : viewingDocType.includes('image') ? (
+                    <img
+                      src={viewingDocUrl}
+                      alt={viewingDocName}
+                      className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
+                    />
+                  ) : (
+                    <div className="text-center p-8">
+                      <span className="material-symbols-outlined text-6xl text-gray-400 mb-4">insert_drive_file</span>
+                      <p className="text-gray-600 dark:text-gray-400 mb-4">Bu dosya türü önizlenemiyor</p>
+                      <a
+                        href={viewingDocUrl}
+                        download={viewingDocName}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-base">download</span>
+                        İndir
+                      </a>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-gray-500 dark:text-gray-400">Belge yüklenemedi</p>
+                </div>
+              )}
+            </div>
+            
+            {/* Modal Footer */}
+            <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex justify-end gap-3">
+              {viewingDocUrl && (
+                <a
+                  href={viewingDocUrl}
+                  download={viewingDocName}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors font-medium"
+                >
+                  <span className="material-symbols-outlined text-base">download</span>
+                  İndir
+                </a>
+              )}
+              <button
+                onClick={closeViewModal}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors font-medium"
+              >
+                <span className="material-symbols-outlined text-base">close</span>
+                Kapat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 export default FirmaBasvuruDurum;
-

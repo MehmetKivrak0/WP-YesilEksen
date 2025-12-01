@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import SanayiNavbar from "./components/SanayiNavbar";
+import { sanayiService } from "../../../services/sanayiService";
+import type { RegisteredCompany } from "../../../services/sanayiService";
 
 const MATERIAL_SYMBOLS_STYLES = `
   .material-symbols-outlined {
@@ -20,79 +22,20 @@ const STYLE_ELEMENT_ID = "sanayi-uye-sirket-inline-style";
 
 const UyeSirketlerPage = () => {
   const [searchTerm, setSearchTerm] = useState("");
-  
-  const initialMemberCompanies = [
-    {
-      id: "C-001",
-      name: "Teknoloji A.Ş.",
-      sector: "Bilgi Teknolojileri",
-      joinedAt: "2024-01-15",
-      lastActivity: "1 saat önce",
-      description: "Aktif üyelik devam ediyor.",
-      status: "Aktif",
-      email: "info@teknoloji.com",
-    },
-    {
-      id: "C-002",
-      name: "Gıda Sanayi Ltd.",
-      sector: "Gıda İşleme",
-      joinedAt: "2024-01-10",
-      lastActivity: "3 saat önce",
-      description: "Üyelik yenileme bekleniyor.",
-      status: "Beklemede",
-      email: "iletisim@gidasanayi.com",
-    },
-    {
-      id: "C-003",
-      name: "Tarım Teknolojileri A.Ş.",
-      sector: "Tarım Teknolojisi",
-      joinedAt: "2024-01-05",
-      lastActivity: "5 saat önce",
-      description: "Aktif üyelik devam ediyor.",
-      status: "Aktif",
-      email: "info@tarimtech.com",
-    },
-    {
-      id: "C-004",
-      name: "Eko Enerji A.Ş.",
-      sector: "Yenilenebilir Enerji",
-      joinedAt: "2023-12-20",
-      lastActivity: "1 gün önce",
-      description: "Aktif üyelik devam ediyor.",
-      status: "Aktif",
-      email: "info@ekoenerji.com",
-    },
-    {
-      id: "C-005",
-      name: "Sürdürülebilir Çözümler Ltd.",
-      sector: "Çevre Teknolojileri",
-      joinedAt: "2023-12-15",
-      lastActivity: "2 gün önce",
-      description: "Aktif üyelik devam ediyor.",
-      status: "Aktif",
-      email: "info@surdurulebilir.com",
-    },
-    {
-      id: "C-006",
-      name: "Organik Tarım Kooperatifi",
-      sector: "Tarım",
-      joinedAt: "2023-12-10",
-      lastActivity: "3 gün önce",
-      description: "Üyelik yenileme bekleniyor.",
-      status: "Beklemede",
-      email: "info@organiktarim.com",
-    },
-  ];
+  const [memberCompanies, setMemberCompanies] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [pendingCount, setPendingCount] = useState(0); // Beklemede sayısı - getDashboardStats'tan gelecek
 
-  const [memberCompanies, setMemberCompanies] = useState(initialMemberCompanies);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [selectedCompany, setSelectedCompany] = useState<typeof initialMemberCompanies[0] | null>(null);
-  const [companyToDelete, setCompanyToDelete] = useState<typeof initialMemberCompanies[0] | null>(null);
+  const [selectedCompany, setSelectedCompany] = useState<any | null>(null);
+  const [companyToDelete, setCompanyToDelete] = useState<any | null>(null);
   const [deleteReason, setDeleteReason] = useState("");
   const [deleteStatus, setDeleteStatus] = useState<"Pasif" | "Silindi">("Pasif");
   const [editedStatus, setEditedStatus] = useState("");
   const [editedSector, setEditedSector] = useState("");
+  const [pasifReason, setPasifReason] = useState("");
   const [toast, setToast] = useState<{ show: boolean; type: "success" | "error" | "info"; title: string; message: string } | null>(null);
   const [activityLogs, setActivityLogs] = useState<Array<{
     id: string;
@@ -103,33 +46,15 @@ const UyeSirketlerPage = () => {
     timestamp: string;
     user: string;
     fullMessage?: string;
-  }>>([
-    {
-      id: "L-001",
-      companyId: "C-001",
-      companyName: "Teknoloji A.Ş.",
-      action: "Güncelleme",
-      details: "Durum: Aktif → Beklemede",
-      timestamp: new Date().toISOString(),
-      user: "Admin",
-      fullMessage: "Sayın Teknoloji A.Ş. Yetkilileri,\n\n12 Kasım 2024 tarihinde şirket bilgilerinizde aşağıdaki değişiklikler yapılmıştır:\n\n• Durum: Aktif → Beklemede\n\nBu değişikliklerle ilgili herhangi bir sorunuz olması durumunda bizimle iletişime geçebilirsiniz.\n\nSaygılarımızla,\nSanayi Odası Yönetimi",
-    },
-    {
-      id: "L-002",
-      companyId: "C-002",
-      companyName: "Gıda Sanayi Ltd.",
-      action: "Güncelleme",
-      details: "Sektör: Gıda İşleme → Tarım",
-      timestamp: new Date(Date.now() - 3600000).toISOString(),
-      user: "Admin",
-      fullMessage: "Sayın Gıda Sanayi Ltd. Yetkilileri,\n\n12 Kasım 2024 tarihinde şirket bilgilerinizde aşağıdaki değişiklikler yapılmıştır:\n\n• Sektör: Gıda İşleme → Tarım\n\nBu değişikliklerle ilgili herhangi bir sorunuz olması durumunda bizimle iletişime geçebilirsiniz.\n\nSaygılarımızla,\nSanayi Odası Yönetimi",
-    },
-  ]);
+  }>>([]);
   const [isLogDetailModalOpen, setIsLogDetailModalOpen] = useState(false);
   const [selectedLog, setSelectedLog] = useState<typeof activityLogs[0] | null>(null);
 
   useEffect(() => {
     document.title = "Üye Şirketler - Sanayi Odası";
+    loadRegisteredCompanies();
+    loadActivityLogs();
+    loadDashboardStats();
 
     let fontLink = document.getElementById(
       MATERIAL_SYMBOLS_FONT_ID,
@@ -166,6 +91,210 @@ const UyeSirketlerPage = () => {
       }
     };
   }, []);
+
+  // Dashboard istatistiklerini yükle - Beklemede sayısı için
+  const loadDashboardStats = async () => {
+    try {
+      const response = await sanayiService.getDashboardStats();
+      if (response.success && response.stats) {
+        // Beklemede firma sayısını al (firma_basvurulari tablosundan)
+        setPendingCount(response.stats.companySummary?.newApplications || 0);
+      }
+    } catch (err) {
+      console.error('Dashboard stats yükleme hatası:', err);
+    }
+  };
+
+  const loadRegisteredCompanies = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await sanayiService.getRegisteredCompanies({ limit: 100 });
+      if (response.success) {
+        // API'den gelen verileri frontend formatına map et
+        const mappedCompanies = response.companies.map((company: RegisteredCompany) => ({
+          id: company.id,
+          name: company.companyName || company.name || 'İsimsiz',
+          sector: company.sector || 'Sektör Yok',
+          joinedAt: company.registrationDate 
+            ? new Date(company.registrationDate).toISOString().split('T')[0]
+            : new Date().toISOString().split('T')[0],
+          lastActivity: 'Son aktivite bilgisi yok',
+          description: company.status === 'aktif' || company.status === 'onaylandi' ? 'Aktif üyelik devam ediyor.' : 
+                       company.status === 'beklemede' ? 'Başvuru beklemede.' :
+                       company.status === 'incelemede' ? 'Başvuru inceleniyor.' :
+                       company.status === 'eksik' ? 'Eksik evrak durumunda.' : 'Üyelik bekliyor.',
+          status: company.status === 'aktif' || company.status === 'onaylandi' ? 'Aktif' : 
+                  company.status === 'beklemede' ? 'Beklemede' : 
+                  company.status === 'incelemede' ? 'İncelemede' :
+                  company.status === 'eksik' ? 'Eksik Evrak' :
+                  company.status === 'pasif' ? 'Pasif' : company.status || 'Beklemede',
+          email: company.email || '',
+        }));
+        
+        setMemberCompanies(mappedCompanies);
+      } else {
+        setError('Firmalar yüklenirken bir hata oluştu');
+        setMemberCompanies([]);
+      }
+    } catch (err: any) {
+      console.error('Kayıtlı firmalar yükleme hatası:', err);
+      setError(err?.response?.data?.message || 'Firmalar yüklenirken bir hata oluştu');
+      // Hata durumunda boş array kullan
+      setMemberCompanies([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadActivityLogs = async () => {
+    try {
+      const response = await sanayiService.getActivityLog({ limit: 50 });
+      if (response.success && response.activities) {
+        // API'den gelen aktiviteleri frontend formatına map et
+        const mappedLogs = response.activities.map((activity: any) => {
+          // Şirket adını backend'den gelen companyName'den al
+          const companyName = activity.companyName || 
+                            activity.details?.firma_adi ||
+                            (activity.details?.varlik_id ? 
+                              memberCompanies.find((c: any) => c.id === activity.details.varlik_id)?.name : 
+                              null) || 
+                            'Bilinmeyen Firma';
+
+          return {
+            id: activity.id || `L-${Date.now()}`,
+            companyId: activity.details?.varlik_id || '',
+            companyName: companyName,
+            action: activity.type === 'onay' ? 'Onaylama' : 
+                    activity.type === 'red' ? 'Reddetme' : 
+                    activity.type === 'durum_degisikligi' ? 'Güncelleme' : 
+                    activity.type === 'guncelleme' ? 'Güncelleme' :
+                    activity.description || 'İşlem',
+            details: activity.description || activity.details?.aciklama || '',
+            timestamp: activity.timestamp || new Date().toISOString(),
+            user: activity.user || 'Sistem',
+            fullMessage: activity.description || activity.details?.aciklama || ''
+          };
+        });
+        setActivityLogs(mappedLogs);
+      }
+    } catch (err) {
+      console.error('Aktivite logları yükleme hatası:', err);
+      // Hata durumunda mevcut logları koru
+    }
+  };
+
+  // CSV export fonksiyonu - Şirketler listesi
+  const exportCompaniesToCSV = () => {
+    if (memberCompanies.length === 0) {
+      showToast("info", "Bilgi", "Dışa aktarılacak şirket bulunmamaktadır.");
+      return;
+    }
+
+    // CSV başlıkları
+    const headers = ['Şirket Adı', 'Sektör', 'Üyelik Tarihi', 'Durum', 'E-posta', 'Açıklama'];
+    
+    // CSV satırları
+    const rows = memberCompanies.map(company => {
+      return [
+        company.name || '',
+        company.sector || '',
+        company.joinedAt || '',
+        company.status || '',
+        company.email || '',
+        company.description || ''
+      ];
+    });
+
+    // CSV içeriğini oluştur
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => 
+        row.map(cell => {
+          // Hücre içinde virgül, tırnak veya yeni satır varsa tırnak içine al
+          const cellStr = String(cell || '');
+          if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+            return `"${cellStr.replace(/"/g, '""')}"`;
+          }
+          return cellStr;
+        }).join(',')
+      )
+    ].join('\n');
+
+    // BOM ekle (Excel'de Türkçe karakterler için)
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `uye-sirketler-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+
+    showToast("success", "Başarılı", "Şirketler listesi CSV formatında dışa aktarıldı.");
+  };
+
+  // CSV export fonksiyonu - Aktivite logları
+  const exportLogsToCSV = () => {
+    if (activityLogs.length === 0) {
+      showToast("info", "Bilgi", "Dışa aktarılacak log kaydı bulunmamaktadır.");
+      return;
+    }
+
+    // CSV başlıkları
+    const headers = ['Tarih/Saat', 'Kullanıcı', 'İşlem', 'Şirket', 'Detay'];
+    
+    // CSV satırları
+    const rows = activityLogs.map(log => {
+      const logDate = new Date(log.timestamp);
+      const formattedDate = logDate.toLocaleDateString("tr-TR", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      
+      return [
+        formattedDate,
+        log.user || '',
+        log.action || '',
+        log.companyName || '',
+        log.details || ''
+      ];
+    });
+
+    // CSV içeriğini oluştur
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => 
+        row.map(cell => {
+          // Hücre içinde virgül, tırnak veya yeni satır varsa tırnak içine al
+          const cellStr = String(cell || '');
+          if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+            return `"${cellStr.replace(/"/g, '""')}"`;
+          }
+          return cellStr;
+        }).join(',')
+      )
+    ].join('\n');
+
+    // BOM ekle (Excel'de Türkçe karakterler için)
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `uye-sirketler-aktivite-loglari-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+
+    showToast("success", "Başarılı", "Aktivite logları CSV formatında dışa aktarıldı.");
+  };
 
   const statusBadgeVariants: Record<string, string> = {
     Beklemede:
@@ -204,7 +333,7 @@ const UyeSirketlerPage = () => {
     company.sector.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleEditClick = (company: typeof initialMemberCompanies[0]) => {
+  const handleEditClick = (company: any) => {
     setSelectedCompany(company);
     setEditedStatus(company.status);
     setEditedSector(company.sector);
@@ -216,9 +345,10 @@ const UyeSirketlerPage = () => {
     setSelectedCompany(null);
     setEditedStatus("");
     setEditedSector("");
+    setPasifReason("");
   };
 
-  const handleDeleteClick = (company: typeof initialMemberCompanies[0]) => {
+  const handleDeleteClick = (company: any) => {
     setCompanyToDelete(company);
     setIsDeleteModalOpen(true);
   };
@@ -325,6 +455,38 @@ Sanayi Odası Yönetimi`;
     }
 
     try {
+      setLoading(true);
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔍 Update company isteği:', {
+          companyId: selectedCompany.id,
+          status: editedStatus,
+          sector: editedSector,
+          currentStatus: selectedCompany.status
+        });
+      }
+
+      // Backend API çağrısı
+      const updateData: { status?: string; sector?: string; reason?: string } = {
+        status: editedStatus,
+        sector: editedSector
+      };
+      
+      // Pasif durumuna çekiliyorsa sebep ekle
+      if (editedStatus === "Pasif" && pasifReason.trim()) {
+        updateData.reason = pasifReason.trim();
+      }
+      
+      const response = await sanayiService.updateCompany(selectedCompany.id, updateData);
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log('✅ Update company yanıtı:', response);
+      }
+
+      if (!response.success) {
+        throw new Error(response.message || 'Güncelleme başarısız');
+      }
+
       // Mesaj oluştur
       const updateMessage = generateUpdateMessage(
         selectedCompany.name,
@@ -334,16 +496,17 @@ Sanayi Odası Yönetimi`;
         editedSector
       );
 
-      // TODO: API çağrısı yapılacak
+      // TODO: Email gönderme işlemi (ileride eklenecek)
       // await sendUpdateMessage(selectedCompany.email, updateMessage);
-      // await updateCompany(selectedCompany.id, { status: editedStatus, sector: editedSector });
 
-      console.log("Güncelleme mesajı gönderiliyor:", {
-        companyId: selectedCompany.id,
-        companyName: selectedCompany.name,
-        companyEmail: selectedCompany.email,
-        message: updateMessage,
-      });
+      if (process.env.NODE_ENV === 'development') {
+        console.log("Güncelleme mesajı gönderiliyor:", {
+          companyId: selectedCompany.id,
+          companyName: selectedCompany.name,
+          companyEmail: selectedCompany.email,
+          message: updateMessage,
+        });
+      }
 
       // Açıklama mesajını oluştur
       const descriptionMessage = `Durum: ${selectedCompany.status} → ${editedStatus}${selectedCompany.sector !== editedSector ? `, Sektör: ${selectedCompany.sector} → ${editedSector}` : ""} - ${new Date().toLocaleDateString("tr-TR")}`;
@@ -386,14 +549,23 @@ Sanayi Odası Yönetimi`;
       showToast(
         "success",
         "Güncelleme Başarılı",
-        `${selectedCompany.name} şirketinin bilgileri güncellendi ve firma yetkilisine mesaj gönderildi.`
+        `${selectedCompany.name} şirketinin bilgileri güncellendi.`
       );
+
+      // Verileri yeniden yükle
+      await Promise.all([
+        loadRegisteredCompanies(),
+        loadActivityLogs()
+      ]);
 
       // Modalı kapat
       closeEditModal();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Güncelleme sırasında hata oluştu:", error);
-      showToast("error", "Hata", "Güncelleme sırasında bir hata oluştu. Lütfen tekrar deneyin.");
+      const errorMessage = error?.response?.data?.message || error?.message || "Güncelleme sırasında bir hata oluştu. Lütfen tekrar deneyin.";
+      showToast("error", "Hata", errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -490,39 +662,57 @@ Sanayi Odası Yönetimi`;
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <button className="flex items-center gap-2 rounded-full border border-[#E8F5E9] bg-[#E8F5E9] px-4 py-2 text-sm font-medium text-[#2E7D32] transition-colors hover:border-[#2E7D32] hover:bg-[#E8F5E9]/80 dark:border-[#2E7D32]/30 dark:bg-[#2E7D32]/10 dark:text-[#4CAF50] dark:hover:border-[#4CAF50] dark:hover:bg-[#2E7D32]/20">
+              <button 
+                onClick={exportCompaniesToCSV}
+                className="flex items-center gap-2 rounded-full border border-[#E8F5E9] bg-[#E8F5E9] px-4 py-2 text-sm font-medium text-[#2E7D32] transition-colors hover:border-[#2E7D32] hover:bg-[#E8F5E9]/80 dark:border-[#2E7D32]/30 dark:bg-[#2E7D32]/10 dark:text-[#4CAF50] dark:hover:border-[#4CAF50] dark:hover:bg-[#2E7D32]/20"
+              >
                 <span className="material-symbols-outlined text-base">download</span>
                 Dışa Aktar
               </button>
             </div>
           </div>
 
-          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-4">
-            <div className="rounded-xl border border-border-light bg-background-light p-6 dark:border-border-dark dark:bg-background-dark">
-              <p className="mb-2 text-sm text-subtle-light dark:text-subtle-dark">Toplam Üye</p>
-              <p className="text-3xl font-bold text-content-light dark:text-content-dark">
-                {memberCompanies.length}
-              </p>
+          {loading ? (
+            <div className="mb-6 py-8 text-center text-subtle-light dark:text-subtle-dark">
+              Yükleniyor...
             </div>
-            <div className="rounded-xl border border-border-light bg-background-light p-6 dark:border-border-dark dark:bg-background-dark">
-              <p className="mb-2 text-sm text-subtle-light dark:text-subtle-dark">Aktif</p>
-              <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">
-                {memberCompanies.filter((c) => c.status === "Aktif").length}
-              </p>
+          ) : error ? (
+            <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-6 dark:border-red-800 dark:bg-red-900/20">
+              <p className="text-red-800 dark:text-red-300">{error}</p>
             </div>
-            <div className="rounded-xl border border-border-light bg-background-light p-6 dark:border-border-dark dark:bg-background-dark">
-              <p className="mb-2 text-sm text-subtle-light dark:text-subtle-dark">Beklemede</p>
-              <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">
-                {memberCompanies.filter((c) => c.status === "Beklemede").length}
-              </p>
-            </div>
-            <div className="rounded-xl border border-border-light bg-background-light p-6 dark:border-border-dark dark:bg-background-dark">
-              <p className="mb-2 text-sm text-subtle-light dark:text-subtle-dark">Bu Ay Eklenen</p>
-              <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
-                {memberCompanies.filter((c) => new Date(c.joinedAt) >= new Date("2024-01-01")).length}
-              </p>
-            </div>
-          </div>
+          ) : (
+            <>
+              <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-4">
+                <div className="rounded-xl border border-border-light bg-background-light p-6 dark:border-border-dark dark:bg-background-dark">
+                  <p className="mb-2 text-sm text-subtle-light dark:text-subtle-dark">Toplam Üye</p>
+                  <p className="text-3xl font-bold text-content-light dark:text-content-dark">
+                    {memberCompanies.length}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border-light bg-background-light p-6 dark:border-border-dark dark:bg-background-dark">
+                  <p className="mb-2 text-sm text-subtle-light dark:text-subtle-dark">Aktif</p>
+                  <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">
+                    {memberCompanies.filter((c) => c.status === "Aktif").length}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border-light bg-background-light p-6 dark:border-border-dark dark:bg-background-dark">
+                  <p className="mb-2 text-sm text-subtle-light dark:text-subtle-dark">Beklemede</p>
+                  <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">
+                    {pendingCount}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border-light bg-background-light p-6 dark:border-border-dark dark:bg-background-dark">
+                  <p className="mb-2 text-sm text-subtle-light dark:text-subtle-dark">Bu Ay Eklenen</p>
+                  <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+                    {memberCompanies.filter((c) => {
+                      const joinedDate = new Date(c.joinedAt);
+                      const now = new Date();
+                      return joinedDate.getMonth() === now.getMonth() && 
+                             joinedDate.getFullYear() === now.getFullYear();
+                    }).length}
+                  </p>
+                </div>
+              </div>
 
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
             <div className="relative flex-1 min-w-[250px]">
@@ -547,90 +737,90 @@ Sanayi Odası Yönetimi`;
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-border-light/80 bg-background-light/80 shadow-sm backdrop-blur-sm dark:border-border-dark/60 dark:bg-background-dark/80">
-            <table className="w-full table-auto border-separate border-spacing-0">
-              <thead className="bg-gradient-to-r from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/5">
-                <tr className="text-left text-xs font-semibold uppercase tracking-wide text-subtle-light dark:text-subtle-dark">
-                  <th className="px-4 py-3 first:rounded-tl-2xl">ŞİRKET ADI</th>
-                  <th className="px-4 py-3">SEKTÖR</th>
-                  <th className="px-4 py-3">ÜYELİK TARİHİ</th>
-                  <th className="px-4 py-3">DURUM</th>
-                  <th className="px-4 py-3">SON AKTİVİTE</th>
-                  <th className="px-4 py-3">AÇIKLAMA</th>
-                  <th className="px-4 py-3 text-right last:rounded-tr-2xl">İŞLEMLER</th>
-                </tr>
-              </thead>
-              <tbody className="bg-background-light/70 text-sm text-subtle-light dark:bg-background-dark/70 dark:text-subtle-dark">
+              <div className="overflow-hidden rounded-2xl border border-border-light/80 bg-background-light/80 shadow-sm backdrop-blur-sm dark:border-border-dark/60 dark:bg-background-dark/80">
                 {filteredCompanies.length > 0 ? (
-                  filteredCompanies.map((company, index) => (
-                    <tr
-                      key={company.name}
-                      className={`group transition-all hover:bg-primary/5 dark:hover:bg-primary/10 ${
-                        index % 2 === 0 
-                          ? "bg-white dark:bg-background-dark" 
-                          : "bg-emerald-50 dark:bg-emerald-900/20"
-                      }`}
-                    >
-                      <td className="px-4 py-3 text-sm font-medium text-content-light dark:text-content-dark">
-                        <div className="flex flex-col">
-                          <span className="leading-tight">{company.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        <div className="flex flex-col">
-                          <span className="leading-tight">{company.sector}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        <div className="flex flex-col">
-                          <span className="leading-tight">{company.joinedAt}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium ${statusBadgeVariants[company.status] ?? statusBadgeVariants.Aktif}`}
+                  <table className="w-full table-auto border-separate border-spacing-0">
+                    <thead className="bg-gradient-to-r from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/5">
+                      <tr className="text-left text-xs font-semibold uppercase tracking-wide text-subtle-light dark:text-subtle-dark">
+                        <th className="px-4 py-3 first:rounded-tl-2xl">ŞİRKET ADI</th>
+                        <th className="px-4 py-3">SEKTÖR</th>
+                        <th className="px-4 py-3">ÜYELİK TARİHİ</th>
+                        <th className="px-4 py-3">DURUM</th>
+                        <th className="px-4 py-3">SON AKTİVİTE</th>
+                        <th className="px-4 py-3">AÇIKLAMA</th>
+                        <th className="px-4 py-3 text-right last:rounded-tr-2xl">İŞLEMLER</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-background-light/70 text-sm text-subtle-light dark:bg-background-dark/70 dark:text-subtle-dark">
+                      {filteredCompanies.map((company, index) => (
+                        <tr
+                          key={company.name}
+                          className={`group transition-all hover:bg-primary/5 dark:hover:bg-primary/10 ${
+                            index % 2 === 0 
+                              ? "bg-white dark:bg-background-dark" 
+                              : "bg-emerald-50 dark:bg-emerald-900/20"
+                          }`}
                         >
-                          {company.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        <div className="flex flex-col">
-                          <span className="leading-tight">{company.lastActivity}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        <div className="flex flex-col">
-                          <span className="leading-tight text-subtle-light dark:text-subtle-dark">{company.description}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => handleEditClick(company)}
-                            className="rounded-lg border border-[#2E7D32] bg-[#2E7D32] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#1B5E20]"
-                          >
-                            Düzenle
-                          </button>
-                          <button
-                            onClick={() => handleDeleteClick(company)}
-                            className="rounded-lg border border-red-600 bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-700"
-                          >
-                            Sil
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                          <td className="px-4 py-3 text-sm font-medium text-content-light dark:text-content-dark">
+                            <div className="flex flex-col">
+                              <span className="leading-tight">{company.name}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            <div className="flex flex-col">
+                              <span className="leading-tight">{company.sector}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            <div className="flex flex-col">
+                              <span className="leading-tight">{company.joinedAt}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium ${statusBadgeVariants[company.status] ?? statusBadgeVariants.Aktif}`}
+                            >
+                              {company.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            <div className="flex flex-col">
+                              <span className="leading-tight">{company.lastActivity}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            <div className="flex flex-col">
+                              <span className="leading-tight text-subtle-light dark:text-subtle-dark">{company.description}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => handleEditClick(company)}
+                                className="rounded-lg border border-[#2E7D32] bg-[#2E7D32] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#1B5E20]"
+                              >
+                                Düzenle
+                              </button>
+                              <button
+                                onClick={() => handleDeleteClick(company)}
+                                className="rounded-lg border border-red-600 bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-700"
+                              >
+                                Sil
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 ) : (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-subtle-light dark:text-subtle-dark">
-                      Arama kriterlerinize uygun şirket bulunamadı.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                <div className="py-12 text-center text-subtle-light dark:text-subtle-dark">
+                  Henüz kayıtlı firma bulunmamaktadır.
+                </div>
+              )}
+            </div>
+            </>
+          )}
 
           {/* Aktivite Logları */}
           <div className="mt-8">
@@ -643,7 +833,10 @@ Sanayi Odası Yönetimi`;
                   Şirketler üzerinde yapılan tüm işlemlerin geçmişi
                 </p>
               </div>
-              <button className="flex items-center gap-2 rounded-full border border-[#E8F5E9] bg-[#E8F5E9] px-4 py-2 text-sm font-medium text-[#2E7D32] transition-colors hover:border-[#2E7D32] hover:bg-[#E8F5E9]/80 dark:border-[#2E7D32]/30 dark:bg-[#2E7D32]/10 dark:text-[#4CAF50] dark:hover:border-[#4CAF50] dark:hover:bg-[#2E7D32]/20">
+              <button 
+                onClick={exportLogsToCSV}
+                className="flex items-center gap-2 rounded-full border border-[#E8F5E9] bg-[#E8F5E9] px-4 py-2 text-sm font-medium text-[#2E7D32] transition-colors hover:border-[#2E7D32] hover:bg-[#E8F5E9]/80 dark:border-[#2E7D32]/30 dark:bg-[#2E7D32]/10 dark:text-[#4CAF50] dark:hover:border-[#4CAF50] dark:hover:bg-[#2E7D32]/20"
+              >
                 <span className="material-symbols-outlined text-base">download</span>
                 Dışa Aktar
               </button>
@@ -831,11 +1024,18 @@ Sanayi Odası Yönetimi`;
                           Şirket durumu "Pasif" olarak işaretlenecek. Bu işlem firma yetkilisine bildirilecektir.
                         </p>
                         <div className="mt-3 rounded-lg border border-amber-300 bg-white/50 p-3 dark:border-amber-700 dark:bg-amber-900/30">
-                          <p className="text-xs font-medium text-amber-800 dark:text-amber-300 mb-1">
-                            Pasife Alma Nedeni:
-                          </p>
-                          <p className="text-xs text-amber-700 dark:text-amber-400">
-                            Şirket durumu pasif olarak güncellenmiştir. Üyelik hakları askıya alınmıştır.
+                          <label className="text-xs font-medium text-amber-800 dark:text-amber-300 mb-1 block">
+                            Pasife Alma Nedeni <span className="text-red-600">*</span>
+                          </label>
+                          <textarea
+                            value={pasifReason}
+                            onChange={(e) => setPasifReason(e.target.value)}
+                            placeholder="Örn: Üyelik aidatı ödenmedi, faaliyet durduruldu vb..."
+                            className="w-full mt-1 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs text-amber-800 placeholder:text-amber-400 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/20 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300 dark:placeholder:text-amber-500"
+                            rows={3}
+                          />
+                          <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                            Bu sebep firma yetkilisine bildirilecektir.
                           </p>
                         </div>
                       </div>

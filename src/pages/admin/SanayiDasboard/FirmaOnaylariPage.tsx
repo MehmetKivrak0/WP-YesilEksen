@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import SanayiNavbar from "./components/SanayiNavbar";
+import { sanayiService } from "../../../services/sanayiService";
+import type { CompanyApplication } from "../../../services/sanayiService";
+import api from "../../../services/api";
 
 const MATERIAL_SYMBOLS_STYLES = `
   .material-symbols-outlined {
@@ -58,6 +61,49 @@ const FirmaOnaylariPage = () => {
     };
   }, []);
 
+  // Belge indirme fonksiyonu
+  const handleDownloadDocument = async (docUrl: string, docName: string) => {
+    try {
+      // URL'den dosya yolunu çıkar
+      const urlMatch = docUrl.match(/\/api\/documents\/file\/(.+)$/);
+      if (!urlMatch) {
+        console.error('Geçersiz belge URL:', docUrl);
+        return;
+      }
+      
+      const filePath = decodeURIComponent(urlMatch[1]);
+      
+      // Axios ile belgeyi indir (token otomatik eklenir)
+      const response = await api.get(`/documents/file/${encodeURIComponent(filePath)}`, {
+        responseType: 'blob',
+        params: { download: 'true' }
+      });
+      
+      // Dosya adını belirle - her zaman PDF uzantısı ile kaydet
+      let downloadFileName = docName || 'belge';
+      // Mevcut uzantıyı kaldır ve PDF ekle
+      downloadFileName = downloadFileName.replace(/\.[^/.]+$/, '') + '.pdf';
+      
+      // Blob'u PDF tipi ile oluştur
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = downloadFileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error: any) {
+      console.error('Belge indirme hatası:', error);
+      if (error.response?.status === 401) {
+        alert('Giriş yapmanız gerekiyor. Lütfen tekrar giriş yapın.');
+      } else {
+        alert('Belge indirilemedi. Lütfen tekrar deneyin.');
+      }
+    }
+  };
+
   const statusBadgeVariants: Record<string, string> = {
     Beklemede:
       "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
@@ -65,115 +111,203 @@ const FirmaOnaylariPage = () => {
       "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300",
     "Eksik Evrak":
       "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300",
+    Pasif:
+      "bg-[#E8F5E9] text-[#2E7D32] dark:bg-[#2E7D32]/20 dark:text-[#4CAF50]",
     Aktif:
       "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
     Reddedildi:
       "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
   };
 
-  const initialPendingCompanies = [
-    {
-      id: "P-1024",
-      name: "Eko Enerji A.Ş.",
-      applicant: "Anadolu Tarım Kooperatifi",
-      sector: "Yenilenebilir Enerji",
-      submittedAt: "2024-02-12",
-      timeAgo: "2 saat önce",
-      description: "Laboratuvar sonuçları bekleniyor.",
-      status: "İncelemede",
-      statusClass: "text-blue-600 dark:text-blue-300",
-      email: "info@ekoenerji.com",
-      phone: "+90 212 555 0101",
-      address: "Maslak Mahallesi, Büyükdere Cad. No:123, Sarıyer/İstanbul",
-      taxNumber: "1234567890",
-      employeeCount: "50-100",
-      establishedYear: "2015",
-      website: "www.ekoenerji.com",
-      documents: ["Ticaret Sicil Gazetesi", "Vergi Levhası", "İmza Sirküleri", "Faaliyet Belgesi", "Oda Kayıt Sicil Sureti"],
-    },
-    {
-      id: "P-1025",
-      name: "Anadolu Kimya Ltd.",
-      applicant: "Çukurova Ziraat",
-      sector: "Kimya",
-      submittedAt: "2024-02-11",
-      timeAgo: "1 gün önce",
-      description: "Evrak kontrolü tamamlandı.",
-      status: "Beklemede",
-      statusClass: "text-amber-600 dark:text-amber-300",
-      email: "iletisim@anadolukimya.com",
-      phone: "+90 312 555 0202",
-      address: "Kızılay Mahallesi, Atatürk Bulvarı No:45, Çankaya/Ankara",
-      taxNumber: "2345678901",
-      employeeCount: "100-250",
-      establishedYear: "2010",
-      website: "www.anadolukimya.com",
-      documents: ["Vergi Levhası", "İmza Sirküleri"],
-    },
-    {
-      id: "P-1026",
-      name: "BioTarımsal Çözümler",
-      applicant: "Bereket Gıda",
-      sector: "Biyoteknoloji",
-      submittedAt: "2024-02-10",
-      timeAgo: "2 gün önce",
-      description: "Eksik belgeler gönderildi.",
-      status: "Eksik Evrak",
-      statusClass: "text-rose-600 dark:text-rose-300",
-      email: "destek@biotarim.com",
-      phone: "+90 232 555 0303",
-      address: "Konak Mahallesi, Cumhuriyet Bulvarı No:78, Konak/İzmir",
-      taxNumber: "3456789012",
-      employeeCount: "25-50",
-      establishedYear: "2018",
-      website: "www.biotarim.com",
-      documents: ["Vergi Levhası"],
-    },
-    {
-      id: "P-1027",
-      name: "Yeşil Teknoloji A.Ş.",
-      applicant: "Marmara Tarım",
-      sector: "Çevre Teknolojileri",
-      submittedAt: "2024-02-09",
-      timeAgo: "3 gün önce",
-      description: "İnceleme süreci devam ediyor.",
-      status: "İncelemede",
-      statusClass: "text-blue-600 dark:text-blue-300",
-      email: "info@yesiltech.com",
-      phone: "+90 216 555 0404",
-      address: "Ataşehir Mahallesi, Barbaros Bulvarı No:234, Ataşehir/İstanbul",
-      taxNumber: "4567890123",
-      employeeCount: "250-500",
-      establishedYear: "2012",
-      website: "www.yesiltech.com",
-      documents: ["Ticaret Sicil Gazetesi", "Vergi Levhası", "İmza Sirküleri", "Oda Kayıt Sicil Sureti"],
-    },
-    {
-      id: "P-1028",
-      name: "Sürdürülebilir Enerji Ltd.",
-      applicant: "Ege Organik",
-      sector: "Enerji",
-      submittedAt: "2024-02-08",
-      timeAgo: "4 gün önce",
-      description: "Onay bekleniyor.",
-      status: "Beklemede",
-      statusClass: "text-amber-600 dark:text-amber-300",
-      email: "iletisim@surenerji.com",
-      phone: "+90 242 555 0505",
-      address: "Konyaaltı Mahallesi, Atatürk Cad. No:567, Konyaaltı/Antalya",
-      taxNumber: "5678901234",
-      employeeCount: "10-25",
-      establishedYear: "2020",
-      website: "www.surenerji.com",
-      documents: ["Ticaret Sicil Gazetesi", "Vergi Levhası", "İmza Sirküleri", "Faaliyet Belgesi", "Oda Kayıt Sicil Sureti"],
-    },
-  ];
+  const [pendingCompanies, setPendingCompanies] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [approvedCount, setApprovedCount] = useState(0);
+  const [rejectedCount, setRejectedCount] = useState(0);
+  
+  // API'den veri yükleme
+  useEffect(() => {
+    loadCompanyApplications();
+    loadDashboardStats();
+  }, []);
 
-  const [pendingCompanies, setPendingCompanies] = useState(initialPendingCompanies);
-  const [selectedCompany, setSelectedCompany] = useState<typeof initialPendingCompanies[0] | null>(null);
+  const loadDashboardStats = async () => {
+    try {
+      const response = await sanayiService.getDashboardStats();
+      if (response.success && response.stats) {
+        // Onaylanan ve reddedilen firma sayılarını al
+        setApprovedCount(response.stats.companySummary?.approved || 0);
+        setRejectedCount(response.stats.companySummary?.rejected || 0);
+      }
+    } catch (err) {
+      console.error('Dashboard stats yükleme hatası:', err);
+    }
+  };
+
+  const loadActivityLogs = async () => {
+    try {
+      const response = await sanayiService.getActivityLog({ limit: 50 });
+      if (response.success && response.activities) {
+        // API'den gelen aktiviteleri frontend formatına map et
+        const mappedLogs = response.activities.map((activity: any) => {
+          // Firma adını bul - backend'den gelen details'ten
+          const companyName = activity.details?.firma_adi || 
+                            (activity.details?.varlik_id ? 
+                              pendingCompanies.find((c: any) => c.id === activity.details.varlik_id)?.name : 
+                              null) || 
+                            'Bilinmeyen Firma';
+
+          return {
+            id: activity.id || `L-${Date.now()}`,
+            companyId: activity.details?.varlik_id || '',
+            companyName: companyName,
+            action: activity.type === 'onay' ? 'Onaylama' : 
+                    activity.type === 'red' ? 'Reddetme' : 
+                    activity.type === 'durum_degisikligi' ? 'Durum Değişikliği' : 
+                    activity.description || 'İşlem',
+            details: activity.description || activity.details?.aciklama || '',
+            timestamp: activity.timestamp || new Date().toISOString(),
+            user: activity.user || 'Sistem',
+            fullMessage: activity.description || activity.details?.aciklama || ''
+          };
+        });
+        setActivityLogs(mappedLogs);
+      }
+    } catch (err) {
+      console.error('Aktivite logları yükleme hatası:', err);
+      // Hata durumunda mevcut logları koru
+    }
+  };
+
+  const loadCompanyApplications = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Sadece beklemede, incelemede, eksik ve pasif durumlarındaki başvuruları getir
+      // Onaylanan başvurular "Şirketler" sayfasında görünecek
+      const response = await sanayiService.getCompanyApplications({ 
+        limit: 100,
+        status: undefined // Backend default olarak beklemede, incelemede, eksik ve pasif getirir
+      });
+      if (response.success) {
+        // API'den gelen verileri frontend formatına map et
+        const mappedCompanies = response.applications.map((app: CompanyApplication) => ({
+          id: app.id,
+          name: app.name,
+          applicant: app.owner || 'Bilinmiyor',
+          sector: app.sector || 'Sektör Yok',
+          submittedAt: app.applicationDate ? new Date(app.applicationDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          timeAgo: app.lastUpdate ? getTimeAgo(new Date(app.lastUpdate)) : 'Bilinmiyor',
+          description: app.description || '',
+          status: app.status === 'beklemede' ? 'Beklemede' : 
+                  app.status === 'onaylandi' ? 'Onaylandı' : 
+                  app.status === 'incelemede' ? 'İncelemede' : app.status,
+          statusClass: app.status === 'beklemede' ? "text-amber-600 dark:text-amber-300" :
+                      app.status === 'incelemede' ? "text-blue-600 dark:text-blue-300" :
+                      app.status === 'onaylandi' ? "text-emerald-600 dark:text-emerald-300" :
+                      "text-gray-600 dark:text-gray-300",
+          email: app.email || '',
+          phone: app.phone || '',
+          address: '', // Backend'den gelmiyorsa boş
+          taxNumber: app.taxNumber || '',
+          employeeCount: app.employeeCount || '1-5',
+          establishedYear: app.establishmentYear?.toString() || new Date().getFullYear().toString(),
+          website: '',
+          documents: app.documents?.map(doc => doc.name) || [],
+          applicationNumber: app.applicationNumber,
+          documentsWithStatus: app.documents || []
+        }));
+        setPendingCompanies(mappedCompanies);
+        
+        // Başvurular yüklendikten sonra aktivite loglarını yükle
+        await loadActivityLogs();
+      }
+    } catch (err) {
+      console.error('Firma başvuruları yükleme hatası:', err);
+      setError('Başvurular yüklenirken bir hata oluştu');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getTimeAgo = (date: Date): string => {
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) return `${days} gün önce`;
+    if (hours > 0) return `${hours} saat önce`;
+    if (minutes > 0) return `${minutes} dakika önce`;
+    return 'Az önce';
+  };
+
+  // CSV export fonksiyonu - Aktivite logları
+  const exportLogsToCSV = () => {
+    if (activityLogs.length === 0) {
+      showToast("info", "Bilgi", "Dışa aktarılacak log kaydı bulunmamaktadır.");
+      return;
+    }
+
+    // CSV başlıkları
+    const headers = ['Tarih/Saat', 'Kullanıcı', 'İşlem', 'Şirket', 'Detay'];
+    
+    // CSV satırları
+    const rows = activityLogs.map(log => {
+      const logDate = new Date(log.timestamp);
+      const formattedDate = logDate.toLocaleDateString("tr-TR", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      
+      return [
+        formattedDate,
+        log.user || '',
+        log.action || '',
+        log.companyName || '',
+        log.details || ''
+      ];
+    });
+
+    // CSV içeriğini oluştur
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => 
+        row.map(cell => {
+          // Hücre içinde virgül, tırnak veya yeni satır varsa tırnak içine al
+          const cellStr = String(cell || '');
+          if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+            return `"${cellStr.replace(/"/g, '""')}"`;
+          }
+          return cellStr;
+        }).join(',')
+      )
+    ].join('\n');
+
+    // BOM ekle (Excel'de Türkçe karakterler için)
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `firma-onaylari-aktivite-loglari-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+
+    showToast("success", "Başarılı", "Aktivite logları CSV formatında dışa aktarıldı.");
+  };
+
+
+  const [selectedCompany, setSelectedCompany] = useState<any | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
-  const [companyToReject, setCompanyToReject] = useState<typeof initialPendingCompanies[0] | null>(null);
+  const [companyToReject, setCompanyToReject] = useState<any | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [isDescriptionModalOpen, setIsDescriptionModalOpen] = useState(false);
   const [descriptionToShow, setDescriptionToShow] = useState<{ companyName: string; fullMessage: string } | null>(null);
@@ -203,7 +337,7 @@ const FirmaOnaylariPage = () => {
   const [isLogDetailModalOpen, setIsLogDetailModalOpen] = useState(false);
   const [selectedLog, setSelectedLog] = useState<typeof activityLogs[0] | null>(null);
 
-  const handleInceleClick = (company: typeof initialPendingCompanies[0]) => {
+  const handleInceleClick = (company: any) => {
     setSelectedCompany(company);
     setIsModalOpen(true);
   };
@@ -213,7 +347,7 @@ const FirmaOnaylariPage = () => {
     setSelectedCompany(null);
   };
 
-  const generateRejectionTemplate = (company: typeof initialPendingCompanies[0]) => {
+  const generateRejectionTemplate = (company: any) => {
     const currentDate = new Date().toLocaleDateString("tr-TR", {
       year: "numeric",
       month: "long",
@@ -246,7 +380,7 @@ Sanayi Odası Yönetimi`;
     return fullMessage.substring(0, maxLength) + "...";
   };
 
-  const handleReddetClick = (company: typeof initialPendingCompanies[0]) => {
+  const handleReddetClick = (company: any) => {
     setCompanyToReject(company);
     const template = generateRejectionTemplate(company);
     setRejectReason(template);
@@ -263,7 +397,7 @@ Sanayi Odası Yönetimi`;
     setRejectReason("");
   };
 
-  const handleDescriptionClick = (company: typeof initialPendingCompanies[0]) => {
+  const handleDescriptionClick = (company: any) => {
     // Eğer reddetme mesajı varsa onu göster, yoksa normal açıklamayı göster
     const fullMessage = fullRejectionMessages.get(company.id) || company.description;
     setDescriptionToShow({
@@ -301,7 +435,7 @@ Sanayi Odası Yönetimi`;
     setSelectedLog(null);
   };
 
-  const generateApprovalMessage = (company: typeof initialPendingCompanies[0]) => {
+  const generateApprovalMessage = (company: any) => {
     const currentDate = new Date().toLocaleDateString("tr-TR", {
       year: "numeric",
       month: "long",
@@ -322,20 +456,38 @@ Saygılarımızla,
 Sanayi Odası Yönetimi`;
   };
 
-  const handleApproveClick = async (company: typeof initialPendingCompanies[0]) => {
+  const handleApproveClick = async (company: any, closeModalAfterSuccess = false) => {
+    if (!company || !company.id) {
+      showToast("error", "Hata", "Firma bilgisi bulunamadı.");
+      return;
+    }
+
     try {
+      // Loading state ekle
+      setLoading(true);
+      
       const approvalMessage = generateApprovalMessage(company);
 
-      // TODO: API çağrısı yapılacak
-      // await sendApprovalMessage(company.email, approvalMessage);
-      // await updateCompanyStatus(company.id, "Aktif");
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔍 Onaylama isteği:', {
+          companyId: company.id,
+          companyName: company.name,
+          hasNote: !!approvalMessage
+        });
+      }
 
-      console.log("Onaylama mesajı gönderiliyor:", {
-        companyId: company.id,
-        companyName: company.name,
-        companyEmail: company.email,
-        message: approvalMessage,
+      // Backend API çağrısı
+      const response = await sanayiService.approveCompany(company.id, { 
+        note: approvalMessage 
       });
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log('✅ Onaylama yanıtı:', response);
+      }
+
+      if (!response.success) {
+        throw new Error(response.message || 'Onaylama başarısız');
+      }
 
       // Log kaydı ekle
       const newLog = {
@@ -350,28 +502,28 @@ Sanayi Odası Yönetimi`;
       };
       setActivityLogs((prevLogs) => [newLog, ...prevLogs]);
 
-      // Firma bilgilerini güncelle
-      setPendingCompanies((prevCompanies) =>
-        prevCompanies.map((c) =>
-          c.id === company.id
-            ? {
-                ...c,
-                status: "Aktif",
-                description: "Başvuru onaylandı ve üyelik aktif edildi.",
-                timeAgo: "Az önce",
-              }
-            : c
-        )
-      );
+      // Başvuruları ve aktivite loglarını yeniden yükle
+      await Promise.all([
+        loadCompanyApplications(),
+        loadActivityLogs()
+      ]);
+
+      // Modal açıksa kapat
+      if (closeModalAfterSuccess && isModalOpen) {
+        closeModal();
+      }
 
       showToast(
         "success",
         "Onaylama Başarılı",
         `${company.name} firmasının başvurusu onaylandı ve firma yetkilisine mesaj gönderildi.`
       );
-    } catch (error) {
+    } catch (error: any) {
       console.error("Onaylama sırasında hata oluştu:", error);
-      showToast("error", "Hata", "Onaylama sırasında bir hata oluştu. Lütfen tekrar deneyin.");
+      const errorMessage = error?.response?.data?.message || error?.message || "Onaylama sırasında bir hata oluştu. Lütfen tekrar deneyin.";
+      showToast("error", "Hata", errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -382,27 +534,25 @@ Sanayi Odası Yönetimi`;
     }
 
     try {
-      // TODO: API çağrısı yapılacak
-      // await sendRejectionMessage(companyToReject.id, rejectReason);
+      // Loading state ekle
+      setLoading(true);
       
-      // Şimdilik console.log ile gösteriyoruz
-      console.log("Reddetme mesajı gönderiliyor:", {
-        companyId: companyToReject.id,
-        companyName: companyToReject.name,
-        companyEmail: companyToReject.email,
-        reason: rejectReason,
+      // Backend API çağrısı
+      const response = await sanayiService.rejectCompany(companyToReject.id, { 
+        reason: rejectReason 
       });
+
+      if (!response.success) {
+        throw new Error(response.message || 'Reddetme başarısız');
+      }
 
       // Mesaj gönderme simülasyonu - Toast göster
       showToast(
         "success",
-        "Mesaj Gönderildi",
+        "Reddetme Başarılı",
         `Reddetme mesajı ${companyToReject.name} firmasına başarıyla gönderildi.`
       );
 
-      // Açıklama alanını güncelle - kısa versiyonu göster
-      const shortDescription = getShortDescription(rejectReason, 100);
-      
       // Tam reddetme mesajını Map'e kaydet
       setFullRejectionMessages((prev) => {
         const newMap = new Map(prev);
@@ -423,44 +573,21 @@ Sanayi Odası Yönetimi`;
       };
       setActivityLogs((prevLogs) => [newLog, ...prevLogs]);
       
-      // Firma bilgilerini güncelle
-      setPendingCompanies((prevCompanies) =>
-        prevCompanies.map((company) =>
-          company.id === companyToReject.id
-            ? {
-                ...company,
-                description: shortDescription,
-                status: "Reddedildi",
-                statusClass: "text-red-600 dark:text-red-300",
-                timeAgo: "Az önce",
-              }
-            : company
-        )
-      );
-
-      // Eğer seçili firma güncelleniyorsa, onu da güncelle
-      if (selectedCompany?.id === companyToReject.id) {
-        setSelectedCompany((prev) =>
-          prev
-            ? {
-                ...prev,
-                description: shortDescription,
-                status: "Reddedildi",
-                statusClass: "text-red-600 dark:text-red-300",
-                timeAgo: "Az önce",
-              }
-            : null
-        );
-      }
+      // Başvuruları, dashboard stats ve aktivite loglarını yeniden yükle
+      await Promise.all([
+        loadCompanyApplications(),
+        loadDashboardStats(),
+        loadActivityLogs()
+      ]);
 
       // Başarılı gönderimden sonra modalı kapat
       closeRejectModal();
-      
-      // TODO: Başvuru durumunu güncelle (API çağrısı)
-      // await updateCompanyStatus(companyToReject.id, "Reddedildi");
-    } catch (error) {
-      console.error("Mesaj gönderilirken hata oluştu:", error);
-      showToast("error", "Hata", "Mesaj gönderilirken bir hata oluştu. Lütfen tekrar deneyin.");
+    } catch (error: any) {
+      console.error("Reddetme sırasında hata oluştu:", error);
+      const errorMessage = error?.response?.data?.message || error?.message || "Reddetme sırasında bir hata oluştu. Lütfen tekrar deneyin.";
+      showToast("error", "Hata", errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -497,49 +624,60 @@ Sanayi Odası Yönetimi`;
             </div>
           </div>
 
-          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-4">
-            <div className="rounded-xl border border-border-light bg-background-light p-6 dark:border-border-dark dark:bg-background-dark">
-              <p className="mb-2 text-sm text-subtle-light dark:text-subtle-dark">Toplam Başvuru</p>
-              <p className="text-3xl font-bold text-content-light dark:text-content-dark">
-                {pendingCompanies.length}
-              </p>
+          {loading ? (
+            <div className="mb-6 py-8 text-center text-subtle-light dark:text-subtle-dark">
+              Yükleniyor...
             </div>
-            <div className="rounded-xl border border-border-light bg-background-light p-6 dark:border-border-dark dark:bg-background-dark">
-              <p className="mb-2 text-sm text-subtle-light dark:text-subtle-dark">Bekleyen</p>
-              <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">
-                {pendingCompanies.filter((c) => c.status === "Beklemede").length}
-              </p>
+          ) : error ? (
+            <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-6 dark:border-red-800 dark:bg-red-900/20">
+              <p className="text-red-800 dark:text-red-300">{error}</p>
             </div>
-            <div className="rounded-xl border border-border-light bg-background-light p-6 dark:border-border-dark dark:bg-background-dark">
-              <p className="mb-2 text-sm text-subtle-light dark:text-subtle-dark">İncelemede</p>
-              <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
-                {pendingCompanies.filter((c) => c.status === "İncelemede").length}
-              </p>
-            </div>
-            <div className="rounded-xl border border-border-light bg-background-light p-6 dark:border-border-dark dark:bg-background-dark">
-              <p className="mb-2 text-sm text-subtle-light dark:text-subtle-dark">Eksik Evrak</p>
-              <p className="text-3xl font-bold text-rose-600 dark:text-rose-400">
-                {pendingCompanies.filter((c) => c.status === "Eksik Evrak").length}
-              </p>
-            </div>
-          </div>
+          ) : (
+            <>
+              <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-4">
+                <div className="rounded-xl border border-border-light bg-background-light p-6 dark:border-border-dark dark:bg-background-dark">
+                  <p className="mb-2 text-sm text-subtle-light dark:text-subtle-dark">Toplam Başvuru</p>
+                  <p className="text-3xl font-bold text-content-light dark:text-content-dark">
+                    {pendingCompanies.filter((c) => c.status === "Beklemede" || c.status === "beklemede").length + approvedCount + rejectedCount}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border-light bg-background-light p-6 dark:border-border-dark dark:bg-background-dark">
+                  <p className="mb-2 text-sm text-subtle-light dark:text-subtle-dark">Bekleyen</p>
+                  <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">
+                    {pendingCompanies.filter((c) => c.status === "Beklemede" || c.status === "beklemede").length}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border-light bg-background-light p-6 dark:border-border-dark dark:bg-background-dark">
+                  <p className="mb-2 text-sm text-subtle-light dark:text-subtle-dark">Onaylandı</p>
+                  <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">
+                    {approvedCount}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border-light bg-background-light p-6 dark:border-border-dark dark:bg-background-dark">
+                  <p className="mb-2 text-sm text-subtle-light dark:text-subtle-dark">Reddedildi</p>
+                  <p className="text-3xl font-bold text-rose-600 dark:text-rose-400">
+                    {rejectedCount}
+                  </p>
+                </div>
+              </div>
 
-          <div className="overflow-hidden rounded-2xl border border-border-light/80 bg-background-light/80 shadow-sm backdrop-blur-sm dark:border-border-dark/60 dark:bg-background-dark/80">
-            <table className="w-full table-auto border-separate border-spacing-0">
-              <thead className="bg-gradient-to-r from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/5">
-                <tr className="text-left text-xs font-semibold uppercase tracking-wide text-subtle-light dark:text-subtle-dark">
-                  <th className="px-4 py-3 first:rounded-tl-2xl">Firma Adı</th>
-                  <th className="px-4 py-3">Başvuru Sahibi</th>
-                  <th className="px-4 py-3">Sektör</th>
-                  <th className="px-4 py-3">Durum</th>
-                  <th className="px-4 py-3">Tarih</th>
-                  <th className="px-4 py-3">Son Güncelleme</th>
-                  <th className="px-4 py-3">Açıklama</th>
-                  <th className="px-4 py-3 text-right last:rounded-tr-2xl">İşlemler</th>
-                </tr>
-              </thead>
-              <tbody className="bg-background-light/70 text-sm text-subtle-light dark:bg-background-dark/70 dark:text-subtle-dark">
-                {pendingCompanies.map((company) => (
+              <div className="overflow-hidden rounded-2xl border border-border-light/80 bg-background-light/80 shadow-sm backdrop-blur-sm dark:border-border-dark/60 dark:bg-background-dark/80">
+                {pendingCompanies.length > 0 ? (
+                  <table className="w-full table-auto border-separate border-spacing-0">
+                    <thead className="bg-gradient-to-r from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/5">
+                      <tr className="text-left text-xs font-semibold uppercase tracking-wide text-subtle-light dark:text-subtle-dark">
+                        <th className="px-4 py-3 first:rounded-tl-2xl">Firma Adı</th>
+                        <th className="px-4 py-3">Başvuru Sahibi</th>
+                        <th className="px-4 py-3">Sektör</th>
+                        <th className="px-4 py-3">Durum</th>
+                        <th className="px-4 py-3">Tarih</th>
+                        <th className="px-4 py-3">Son Güncelleme</th>
+                        <th className="px-4 py-3">Açıklama</th>
+                        <th className="px-4 py-3 text-right last:rounded-tr-2xl">İşlemler</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-background-light/70 text-sm text-subtle-light dark:bg-background-dark/70 dark:text-subtle-dark">
+                      {pendingCompanies.map((company) => (
                   <tr
                     key={company.id}
                     className="group transition-all hover:bg-primary/5 dark:hover:bg-primary/10"
@@ -597,23 +735,32 @@ Sanayi Odası Yönetimi`;
                         </button>
                         <button
                           onClick={() => handleApproveClick(company)}
-                          className="rounded-lg border border-[#2E7D32] bg-[#2E7D32] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#1B5E20]"
+                          disabled={loading}
+                          className="rounded-lg border border-[#2E7D32] bg-[#2E7D32] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#1B5E20] disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          Onayla
+                          {loading ? 'İşleniyor...' : 'Onayla'}
                         </button>
                         <button
                           onClick={() => handleReddetClick(company)}
-                          className="rounded-lg border border-red-600 bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-700"
+                          disabled={loading}
+                          className="rounded-lg border border-red-600 bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           Reddet
                         </button>
                       </div>
                     </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="py-12 text-center text-subtle-light dark:text-subtle-dark">
+                    Henüz başvuru bulunmamaktadır.
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
           {/* Aktivite Logları */}
           <div className="mt-8">
@@ -626,7 +773,10 @@ Sanayi Odası Yönetimi`;
                   Firma başvuruları üzerinde yapılan tüm işlemlerin geçmişi
                 </p>
               </div>
-              <button className="flex items-center gap-2 rounded-full border border-[#E8F5E9] bg-[#E8F5E9] px-4 py-2 text-sm font-medium text-[#2E7D32] transition-colors hover:border-[#2E7D32] hover:bg-[#E8F5E9]/80 dark:border-[#2E7D32]/30 dark:bg-[#2E7D32]/10 dark:text-[#4CAF50] dark:hover:border-[#4CAF50] dark:hover:bg-[#2E7D32]/20">
+              <button 
+                onClick={exportLogsToCSV}
+                className="flex items-center gap-2 rounded-full border border-[#E8F5E9] bg-[#E8F5E9] px-4 py-2 text-sm font-medium text-[#2E7D32] transition-colors hover:border-[#2E7D32] hover:bg-[#E8F5E9]/80 dark:border-[#2E7D32]/30 dark:bg-[#2E7D32]/10 dark:text-[#4CAF50] dark:hover:border-[#4CAF50] dark:hover:bg-[#2E7D32]/20"
+              >
                 <span className="material-symbols-outlined text-base">download</span>
                 Dışa Aktar
               </button>
@@ -878,91 +1028,62 @@ Sanayi Odası Yönetimi`;
                       Yüklenen Belgeler
                     </h3>
                     <div className="rounded-lg border border-border-light bg-background-light/50 p-4 dark:border-border-dark dark:bg-background-dark/50">
-                      {/* Zorunlu Belgeler */}
+                      {/* Belgeler */}
                       <div className="mb-4">
                         <div className="mb-2 flex items-center gap-2">
                           <span className="material-symbols-outlined text-base text-primary">verified</span>
                           <h4 className="text-xs font-semibold uppercase tracking-wide text-subtle-light dark:text-subtle-dark">
-                            Zorunlu Belgeler
+                            Yüklenen Belgeler
                           </h4>
                         </div>
                         <div className="space-y-2">
-                          {selectedCompany.documents
-                            .filter((doc) => 
-                              doc === "Ticaret Sicil Gazetesi" || 
-                              doc === "Vergi Levhası" || 
-                              doc === "İmza Sirküleri" || 
-                              doc === "Faaliyet Belgesi" || 
-                              doc === "Oda Kayıt Sicil Sureti"
-                            )
-                            .map((doc, index) => (
+                          {selectedCompany.documentsWithStatus && selectedCompany.documentsWithStatus.length > 0 ? (
+                            selectedCompany.documentsWithStatus.map((doc: any, index: number) => (
+                              <div
+                                key={index}
+                                className="flex items-center gap-2 rounded-lg border border-border-light bg-background-light px-3 py-2 dark:border-border-dark dark:bg-background-dark"
+                              >
+                                <span className="material-symbols-outlined text-base text-primary">description</span>
+                                <span className="text-sm text-content-light dark:text-content-dark">{doc.name}</span>
+                                <span className={`ml-auto mr-2 rounded-full px-2 py-0.5 text-xs font-medium ${
+                                  doc.status === 'Onaylandı' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' :
+                                  doc.status === 'Reddedildi' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' :
+                                  doc.status === 'Eksik' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' :
+                                  'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                                }`}>
+                                  {doc.status}
+                                </span>
+                                {doc.url && (
+                                  <button
+                                    onClick={() => handleDownloadDocument(doc.url, doc.name)}
+                                    className="rounded-lg border border-[#2E7D32] bg-[#2E7D32] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#1B5E20] dark:border-[#4CAF50] dark:bg-[#4CAF50] dark:hover:bg-[#2E7D32]"
+                                  >
+                                    İndir
+                                  </button>
+                                )}
+                              </div>
+                            ))
+                          ) : selectedCompany.documents && selectedCompany.documents.length > 0 ? (
+                            selectedCompany.documents.map((doc: string, index: number) => (
                               <div
                                 key={index}
                                 className="flex items-center gap-2 rounded-lg border border-border-light bg-background-light px-3 py-2 dark:border-border-dark dark:bg-background-dark"
                               >
                                 <span className="material-symbols-outlined text-base text-primary">description</span>
                                 <span className="text-sm text-content-light dark:text-content-dark">{doc}</span>
-                                <span className="ml-auto mr-2 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-300">
-                                  Onaylandı
+                                <span className="ml-auto mr-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                                  Beklemede
                                 </span>
-                                <button className="rounded-lg border border-[#2E7D32] bg-[#2E7D32] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#1B5E20] dark:border-[#4CAF50] dark:bg-[#4CAF50] dark:hover:bg-[#2E7D32]">
-                                  İndir
-                                </button>
                               </div>
-                            ))}
+                            ))
+                          ) : (
+                            <div className="py-4 text-center text-sm text-subtle-light dark:text-subtle-dark">
+                              Henüz belge yüklenmemiş
+                            </div>
+                          )}
                         </div>
                       </div>
 
-                      {/* Opsiyonel Belgeler */}
-                      {selectedCompany.documents.some((doc) => 
-                        doc === "Gıda İşletme Kayıt" || 
-                        doc === "Gıda İşletme Kayıt / Onay Belgesi" ||
-                        doc === "Sanayi Sicil Belgesi" || 
-                        doc === "Kapasite Raporu" ||
-                        doc === "Sertifikalar"
-                      ) && (
-                        <div>
-                          <div className="mb-2 flex items-center gap-2">
-                            <span className="material-symbols-outlined text-base text-blue-600 dark:text-blue-400">add_circle</span>
-                            <h4 className="text-xs font-semibold uppercase tracking-wide text-subtle-light dark:text-subtle-dark">
-                              Opsiyonel Belgeler
-                            </h4>
-                          </div>
-                          <div className="space-y-2">
-                            {selectedCompany.documents
-                              .filter((doc) => 
-                                doc === "Gıda İşletme Kayıt" || 
-                                doc === "Gıda İşletme Kayıt / Onay Belgesi" ||
-                                doc === "Sanayi Sicil Belgesi" || 
-                                doc === "Kapasite Raporu" ||
-                                doc === "Sertifikalar"
-                              )
-                              .map((doc, index) => (
-                                <div
-                                  key={index}
-                                  className="flex items-center gap-2 rounded-lg border border-border-light bg-background-light px-3 py-2 dark:border-border-dark dark:bg-background-dark"
-                                >
-                                  <span className="material-symbols-outlined text-base text-blue-600 dark:text-blue-400">description</span>
-                                  <span className="text-sm text-content-light dark:text-content-dark">{doc}</span>
-                                  <span className="ml-auto mr-2 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-300">
-                                    Onaylandı
-                                  </span>
-                                  <button className="rounded-lg border border-[#2E7D32] bg-[#2E7D32] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#1B5E20] dark:border-[#4CAF50] dark:bg-[#4CAF50] dark:hover:bg-[#2E7D32]">
-                                    İndir
-                                  </button>
-                                </div>
-                              ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Eğer hiçbir belge yoksa */}
-                      {selectedCompany.documents.length === 0 && (
-                        <div className="py-8 text-center">
-                          <span className="material-symbols-outlined mb-2 text-4xl text-subtle-light dark:text-subtle-dark">folder_open</span>
-                          <p className="text-sm text-subtle-light dark:text-subtle-dark">Henüz belge yüklenmemiş</p>
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -979,20 +1100,21 @@ Sanayi Odası Yönetimi`;
               </button>
               <button
                 onClick={() => handleReddetClick(selectedCompany)}
-                className="rounded-lg border border-red-600 bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700"
+                disabled={loading}
+                className="rounded-lg border border-red-600 bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Reddet
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (selectedCompany) {
-                    handleApproveClick(selectedCompany);
-                    closeModal();
+                    await handleApproveClick(selectedCompany, true);
                   }
                 }}
-                className="rounded-lg border border-[#2E7D32] bg-[#2E7D32] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1B5E20]"
+                disabled={loading}
+                className="rounded-lg border border-[#2E7D32] bg-[#2E7D32] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1B5E20] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Onayla
+                {loading ? 'İşleniyor...' : 'Onayla'}
               </button>
             </div>
           </div>
@@ -1088,10 +1210,10 @@ Sanayi Odası Yönetimi`;
               </button>
               <button
                 onClick={handleRejectSubmit}
-                disabled={!rejectReason.trim()}
+                disabled={!rejectReason.trim() || loading}
                 className="rounded-lg border border-red-600 bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Reddet ve Mesaj Gönder
+                {loading ? 'İşleniyor...' : 'Reddet ve Mesaj Gönder'}
               </button>
             </div>
           </div>
