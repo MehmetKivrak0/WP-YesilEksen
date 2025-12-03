@@ -833,16 +833,19 @@ const getCiftlikProfil = async (req, res) => {
                 sertifikalarDetay: sertifikalarResult.rows.map(row => {
                     // Dosya URL'ini oluştur (relative path ise /api/documents/file/ ile birleştir)
                     let documentUrl = null;
-                    if (row.dosya_url) {
+                    if (row.dosya_url && row.dosya_url.trim() !== '') {
                         if (row.dosya_url.startsWith('http://') || row.dosya_url.startsWith('https://')) {
                             // Zaten tam URL ise olduğu gibi kullan
                             documentUrl = row.dosya_url;
                         } else {
                             // Relative path ise /api/documents/file/ ile birleştir
+                            // row.dosya_url formatı: "farmer/userId/filename.pdf" (zaten / ile başlamıyor)
                             const normalizedPath = row.dosya_url.startsWith('/') 
                                 ? row.dosya_url.substring(1) 
                                 : row.dosya_url;
-                            documentUrl = `${baseUrl}/api/documents/file/${encodeURIComponent(normalizedPath)}`;
+                            // Path'i encode et (özel karakterler için)
+                            const encodedPath = encodeURIComponent(normalizedPath).replace(/%2F/g, '/');
+                            documentUrl = `${baseUrl}/api/documents/file/${encodedPath}`;
                         }
                     }
                     

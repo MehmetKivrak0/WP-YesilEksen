@@ -89,6 +89,21 @@ function CiftlikProfil() {
         if (!profil.logo_url && profil.website) {
           profil.logo_url = profil.website;
         }
+        // Debug: Sertifikaları kontrol et
+        console.log('📋 Çiftlik profili yüklendi:', {
+          sertifikalarDetay: profil.sertifikalarDetay,
+          sertifikalarDetayLength: profil.sertifikalarDetay?.length || 0,
+          sertifikalar: profil.sertifikalar,
+          sertifikalarLength: profil.sertifikalar?.length || 0
+        });
+        if (profil.sertifikalarDetay && profil.sertifikalarDetay.length > 0) {
+          console.log('📋 Sertifika detayları:', profil.sertifikalarDetay.map(s => ({
+            id: s.id,
+            ad: s.sertifika_adi,
+            dosya_url: s.dosya_url,
+            hasFile: !!s.dosya_url && s.dosya_url.trim() !== ''
+          })));
+        }
         setCiftlikBilgileri(profil);
         setOriginalData(profil);
       }
@@ -194,6 +209,16 @@ function CiftlikProfil() {
 
   // Belge görüntüleme fonksiyonu
   const handleViewDocument = async (url: string, name: string) => {
+    // URL kontrolü
+    if (!url || url.trim() === '') {
+      setToast({
+        message: 'Belge URL\'si bulunamadı',
+        type: 'error',
+        isVisible: true
+      });
+      return;
+    }
+
     setSelectedBelgeUrl(url);
     setSelectedBelgeName(name);
     setIsBelgeModalOpen(true);
@@ -201,7 +226,7 @@ function CiftlikProfil() {
     setDocumentBlobUrl(null);
     setDocumentLoading(true);
     
-    // Dosya türünü kontrol et
+    // Dosya türünü kontrol et (URL'den dosya uzantısını al)
     const cleanUrl = url.split('?')[0];
     const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(cleanUrl);
     const isPdf = /\.pdf$/i.test(cleanUrl);
@@ -210,36 +235,148 @@ function CiftlikProfil() {
     if (isImage || isPdf) {
       try {
         const token = localStorage.getItem('token');
-        const fullUrl = url.startsWith('http') ? url : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${url}`;
+        
+        // URL formatını düzelt - Backend'den gelen URL zaten tam URL olabilir
+        let fullUrl = url;
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          // Relative path ise API URL ile birleştir
+          const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+          if (url.startsWith('/api')) {
+            const baseUrl = apiBaseUrl.replace('/api', '');
+            fullUrl = `${baseUrl}${url}`;
+          } else {
+            fullUrl = `${apiBaseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+          }
+        } else {
+          // Backend'den gelen tam URL - domain'i normalize et
+          try {
+            const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+            const apiUrlObj = new URL(apiBaseUrl);
+            const urlObj = new URL(url);
+            
+            // Path ve query string'i koru, domain'i frontend'in beklediği domain ile değiştir
+            fullUrl = `${apiUrlObj.protocol}//${apiUrlObj.host}${urlObj.pathname}${urlObj.search}`;
+          } catch (e) {
+            // URL parse edilemezse olduğu gibi kullan
+            console.warn('⚠️ URL parse edilemedi, olduğu gibi kullanılıyor:', url);
+            fullUrl = url;
+          }
+        }
+        
+        console.log('📄 Belge görüntüleme:', { 
+          originalUrl: url, 
+          fullUrl, 
+          isImage, 
+          isPdf,
+          cleanUrl 
+        });
+        
         const response = await fetch(fullUrl, {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
         });
         
+        console.log('📄 Belge yanıtı:', { 
+          status: response.status, 
+          statusText: response.statusText, 
+          ok: response.ok,
+          contentType: response.headers.get('content-type')
+        });
+        
         if (response.ok) {
           const blob = await response.blob();
+          console.log('📄 Blob oluşturuldu:', { 
+            type: blob.type, 
+            size: blob.size 
+          });
+          
+          if (blob.size === 0) {
+            throw new Error('Dosya boş');
+          }
+          
           const blobUrl = URL.createObjectURL(blob);
           setDocumentBlobUrl(blobUrl);
         } else {
+          const errorText = await response.text().catch(() => 'Bilinmeyen hata');
+          console.error('❌ Belge yükleme hatası:', { 
+            status: response.status, 
+            statusText: response.statusText, 
+            error: errorText 
+          });
           setDocumentError(true);
+          setToast({
+            message: `Belge yüklenemedi (${response.status}: ${response.statusText})`,
+            type: 'error',
+            isVisible: true
+          });
         }
-      } catch (error) {
-        console.error('Belge yükleme hatası:', error);
+      } catch (error: any) {
+        console.error('❌ Belge yükleme hatası:', error);
         setDocumentError(true);
+        setToast({
+          message: error.message || 'Belge yüklenirken bir hata oluştu',
+          type: 'error',
+          isVisible: true
+        });
       } finally {
         setDocumentLoading(false);
       }
     } else {
+      console.log('⚠️ Desteklenmeyen dosya türü:', cleanUrl);
       setDocumentLoading(false);
+      setDocumentError(true);
+      setToast({
+        message: 'Bu dosya türü tarayıcıda görüntülenemiyor. Lütfen indirerek görüntüleyin.',
+        type: 'info',
+        isVisible: true
+      });
     }
   };
 
   // Belge indirme fonksiyonu
   const handleDownloadDocument = async (url: string, name: string) => {
+    // URL kontrolü
+    if (!url || url.trim() === '') {
+      setToast({
+        message: 'Belge URL\'si bulunamadı',
+        type: 'error',
+        isVisible: true
+      });
+      return;
+    }
+
     try {
       const token = localStorage.getItem('token');
-      const fullUrl = url.startsWith('http') ? url : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${url}`;
+      
+      // URL formatını düzelt - Backend'den gelen URL zaten tam URL olabilir
+      let fullUrl = url;
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        // Relative path ise API URL ile birleştir
+        const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+        if (url.startsWith('/api')) {
+          const baseUrl = apiBaseUrl.replace('/api', '');
+          fullUrl = `${baseUrl}${url}`;
+        } else {
+          fullUrl = `${apiBaseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+        }
+      } else {
+        // Backend'den gelen tam URL - domain'i normalize et
+        try {
+          const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+          const apiUrlObj = new URL(apiBaseUrl);
+          const urlObj = new URL(url);
+          
+          // Path ve query string'i koru, domain'i frontend'in beklediği domain ile değiştir
+          fullUrl = `${apiUrlObj.protocol}//${apiUrlObj.host}${urlObj.pathname}${urlObj.search}`;
+        } catch (e) {
+          // URL parse edilemezse olduğu gibi kullan
+          console.warn('⚠️ URL parse edilemedi, olduğu gibi kullanılıyor:', url);
+          fullUrl = url;
+        }
+      }
+      
+      console.log('📥 Belge indirme:', { originalUrl: url, fullUrl });
       
       // Fetch ile blob al
       const response = await fetch(fullUrl, {
@@ -249,10 +386,21 @@ function CiftlikProfil() {
       });
       
       if (!response.ok) {
-        throw new Error('İndirme başarısız');
+        const errorText = await response.text().catch(() => 'Bilinmeyen hata');
+        console.error('❌ İndirme hatası:', { 
+          status: response.status, 
+          statusText: response.statusText, 
+          error: errorText 
+        });
+        throw new Error(`İndirme başarısız (${response.status}: ${response.statusText})`);
       }
       
       const blob = await response.blob();
+      console.log('📥 Blob oluşturuldu:', { type: blob.type, size: blob.size });
+      
+      if (blob.size === 0) {
+        throw new Error('Dosya boş');
+      }
       
       // Blob URL oluştur ve indir
       const blobUrl = URL.createObjectURL(blob);
@@ -260,7 +408,14 @@ function CiftlikProfil() {
       link.href = blobUrl;
       
       // Dosya adını al (URL'den veya name parametresinden)
-      const fileName = name || url.split('/').pop()?.split('?')[0] || 'sertifika-belgesi';
+      // Dosya uzantısını koru
+      const urlFileName = url.split('/').pop()?.split('?')[0] || '';
+      const fileExtension = urlFileName.includes('.') ? urlFileName.split('.').pop() : '';
+      const baseFileName = name || urlFileName.replace(/\.[^/.]+$/, '') || 'sertifika-belgesi';
+      // Dosya adındaki özel karakterleri temizle
+      const cleanFileName = baseFileName.replace(/[^a-zA-Z0-9ğüşıöçĞÜŞİÖÇ\s-]/g, '');
+      const fileName = fileExtension ? `${cleanFileName}.${fileExtension}` : cleanFileName;
+      
       link.download = fileName;
       
       document.body.appendChild(link);
@@ -271,10 +426,16 @@ function CiftlikProfil() {
       setTimeout(() => {
         URL.revokeObjectURL(blobUrl);
       }, 100);
-    } catch (error) {
-      console.error('İndirme hatası:', error);
+      
       setToast({
-        message: 'Belge indirilemedi. Lütfen tekrar deneyin.',
+        message: 'Belge başarıyla indirildi',
+        type: 'success',
+        isVisible: true
+      });
+    } catch (error: any) {
+      console.error('❌ İndirme hatası:', error);
+      setToast({
+        message: error.message || 'Belge indirilemedi. Lütfen tekrar deneyin.',
         type: 'error',
         isVisible: true
       });
@@ -764,24 +925,38 @@ function CiftlikProfil() {
                           </div>
                         </div>
                       </div>
-                      {sertifika.dosya_url && (
+                      {sertifika.dosya_url && sertifika.dosya_url.trim() !== '' ? (
                         <div className="flex-shrink-0 flex gap-2">
                           <button
-                            onClick={() => handleViewDocument(sertifika.dosya_url!, sertifika.sertifika_adi)}
-                            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/10 dark:hover:bg-primary/20 rounded-lg transition-colors"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleViewDocument(sertifika.dosya_url!, sertifika.sertifika_adi);
+                            }}
+                            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-primary bg-primary/10 dark:bg-primary/20 hover:bg-primary/20 dark:hover:bg-primary/30 rounded-lg transition-colors border border-primary/30 dark:border-primary/50"
                             type="button"
                           >
                             <span className="material-symbols-outlined text-base">visibility</span>
                             Görüntüle
                           </button>
                           <button
-                            onClick={() => handleDownloadDocument(sertifika.dosya_url!, sertifika.sertifika_adi)}
-                            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-subtle-light dark:text-subtle-dark hover:bg-background-light/50 dark:hover:bg-background-dark/50 rounded-lg transition-colors border border-border-light dark:border-border-dark"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleDownloadDocument(sertifika.dosya_url!, sertifika.sertifika_adi);
+                            }}
+                            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-subtle-light dark:text-subtle-dark bg-background-light/50 dark:bg-background-dark/50 hover:bg-background-light dark:hover:bg-background-dark rounded-lg transition-colors border border-border-light dark:border-border-dark"
                             type="button"
                           >
                             <span className="material-symbols-outlined text-base">download</span>
                             İndir
                           </button>
+                        </div>
+                      ) : (
+                        <div className="flex-shrink-0">
+                          <span className="text-xs text-subtle-light dark:text-subtle-dark italic">
+                            Dosya yüklenmemiş
+                          </span>
                         </div>
                       )}
                     </div>
