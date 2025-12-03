@@ -57,6 +57,77 @@ function CiftlikProfil() {
   // Orijinal verileri sakla (iptal için)
   const [originalData, setOriginalData] = useState<CiftlikProfil | null>(null);
 
+  // URL normalize fonksiyonu - /uploads/ path'lerini /api/documents/file/ ile değiştir
+  const normalizeImageUrl = (url: string | null | undefined): string | null => {
+    if (!url || url.trim() === '') return null;
+    
+    // Eğer URL zaten /api/documents/file/ ile başlıyorsa, olduğu gibi döndür
+    if (url.includes('/api/documents/file/')) {
+      // Sadece domain'i normalize et (eğer gerekirse)
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        try {
+          const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+          const apiUrlObj = new URL(apiBaseUrl);
+          const urlObj = new URL(url);
+          
+          // Domain'i normalize et, path'i olduğu gibi bırak
+          return `${apiUrlObj.protocol}//${apiUrlObj.host}${urlObj.pathname}${urlObj.search}`;
+        } catch (e) {
+          return url;
+        }
+      }
+      // Relative path ise, base URL ekle
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+        const baseUrl = apiBaseUrl.replace('/api', '');
+        return `${baseUrl}${url.startsWith('/') ? url : '/' + url}`;
+      }
+      return url;
+    }
+    
+    // Eğer URL /uploads/ içeriyorsa, /api/documents/file/ ile değiştir
+    if (url.includes('/uploads/')) {
+      const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      const baseUrl = apiBaseUrl.replace('/api', '');
+      const uploadsIndex = url.indexOf('/uploads/');
+      if (uploadsIndex !== -1) {
+        const pathAfterUploads = url.substring(uploadsIndex + '/uploads/'.length);
+        return `${baseUrl}/api/documents/file/${pathAfterUploads}`;
+      }
+    }
+    
+    // Eğer tam URL ise ve domain normalize edilmesi gerekiyorsa
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      try {
+        const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+        const apiUrlObj = new URL(apiBaseUrl);
+        const urlObj = new URL(url);
+        
+        // Eğer path /uploads/ içeriyorsa, /api/documents/file/ ile değiştir
+        let path = urlObj.pathname;
+        if (path.includes('/uploads/')) {
+          const uploadsIndex = path.indexOf('/uploads/');
+          const pathAfterUploads = path.substring(uploadsIndex + '/uploads/'.length);
+          path = `/api/documents/file/${pathAfterUploads}`;
+        }
+        
+        return `${apiUrlObj.protocol}//${apiUrlObj.host}${path}${urlObj.search}`;
+      } catch (e) {
+        // URL parse edilemezse olduğu gibi döndür
+        return url;
+      }
+    }
+    
+    // Relative path ise ve /api/documents/file/ içermiyorsa, ekle
+    if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('/')) {
+      const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      const baseUrl = apiBaseUrl.replace('/api', '');
+      return `${baseUrl}/api/documents/file/${url}`;
+    }
+    
+    return url;
+  };
+
   // Veri yükleme
   useEffect(() => {
     fetchCiftlikProfil();
@@ -89,12 +160,23 @@ function CiftlikProfil() {
         if (!profil.logo_url && profil.website) {
           profil.logo_url = profil.website;
         }
+        
+        // Logo URL'lerini normalize et
+        if (profil.logo_url) {
+          profil.logo_url = normalizeImageUrl(profil.logo_url) || profil.logo_url;
+        }
+        if (profil.website) {
+          profil.website = normalizeImageUrl(profil.website) || profil.website;
+        }
+        
         // Debug: Sertifikaları kontrol et
         console.log('📋 Çiftlik profili yüklendi:', {
           sertifikalarDetay: profil.sertifikalarDetay,
           sertifikalarDetayLength: profil.sertifikalarDetay?.length || 0,
           sertifikalar: profil.sertifikalar,
-          sertifikalarLength: profil.sertifikalar?.length || 0
+          sertifikalarLength: profil.sertifikalar?.length || 0,
+          logo_url: profil.logo_url,
+          website: profil.website
         });
         if (profil.sertifikalarDetay && profil.sertifikalarDetay.length > 0) {
           console.log('📋 Sertifika detayları:', profil.sertifikalarDetay.map(s => ({
@@ -236,86 +318,104 @@ function CiftlikProfil() {
       try {
         const token = localStorage.getItem('token');
         
-        // URL formatını düzelt - Backend'den gelen URL zaten tam URL olabilir
-        let fullUrl = url;
-        if (!url.startsWith('http://') && !url.startsWith('https://')) {
-          // Relative path ise API URL ile birleştir
-          const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-          if (url.startsWith('/api')) {
-            const baseUrl = apiBaseUrl.replace('/api', '');
-            fullUrl = `${baseUrl}${url}`;
-          } else {
-            fullUrl = `${apiBaseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
-          }
-        } else {
-          // Backend'den gelen tam URL - domain'i normalize et
+        // Önce URL'yi normalize et (özellikle /uploads/ → /api/documents/file/ dönüşümü için)
+        let normalizedUrl = normalizeImageUrl(url) || url;
+        
+        // Backend'den gelen URL zaten tam URL olabilir: http://localhost:5000/api/documents/file/farmer/userId/filename.pdf
+        // Sadece domain'i normalize et, path'i olduğu gibi bırak
+        let fullUrl = normalizedUrl;
+        
+        if (normalizedUrl.startsWith('http://') || normalizedUrl.startsWith('https://')) {
+          // Tam URL ise, sadece domain'i kontrol et
           try {
             const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
             const apiUrlObj = new URL(apiBaseUrl);
-            const urlObj = new URL(url);
+            const urlObj = new URL(normalizedUrl);
             
-            // Path ve query string'i koru, domain'i frontend'in beklediği domain ile değiştir
-            fullUrl = `${apiUrlObj.protocol}//${apiUrlObj.host}${urlObj.pathname}${urlObj.search}`;
+            // Domain farklıysa normalize et, path'i olduğu gibi bırak
+            if (urlObj.host !== apiUrlObj.host || urlObj.protocol !== apiUrlObj.protocol) {
+              fullUrl = `${apiUrlObj.protocol}//${apiUrlObj.host}${urlObj.pathname}${urlObj.search}`;
+            }
           } catch (e) {
-            // URL parse edilemezse olduğu gibi kullan
-            console.warn('⚠️ URL parse edilemedi, olduğu gibi kullanılıyor:', url);
-            fullUrl = url;
+            console.warn('⚠️ URL parse edilemedi, olduğu gibi kullanılıyor:', normalizedUrl);
+            fullUrl = normalizedUrl;
+          }
+        } else {
+          // Relative path ise, tam URL'ye çevir
+          const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+          const baseUrl = apiBaseUrl.replace('/api', '');
+          if (normalizedUrl.startsWith('/api')) {
+            fullUrl = `${baseUrl}${normalizedUrl}`;
+          } else {
+            fullUrl = `${baseUrl}/api/documents/file/${normalizedUrl.startsWith('/') ? normalizedUrl.substring(1) : normalizedUrl}`;
           }
         }
         
-        console.log('📄 Belge görüntüleme:', { 
-          originalUrl: url, 
-          fullUrl, 
-          isImage, 
+        console.log('📄 Belge görüntüleme:', {
+          originalUrl: url,
+          normalizedUrl,
+          fullUrl,
+          isImage,
           isPdf,
-          cleanUrl 
+          cleanUrl
         });
         
         const response = await fetch(fullUrl, {
+          method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`,
           },
+          credentials: 'include', // CORS için
         });
         
         console.log('📄 Belge yanıtı:', { 
           status: response.status, 
           statusText: response.statusText, 
           ok: response.ok,
-          contentType: response.headers.get('content-type')
+          contentType: response.headers.get('content-type'),
+          headers: Object.fromEntries(response.headers.entries())
         });
         
-        if (response.ok) {
-          const blob = await response.blob();
-          console.log('📄 Blob oluşturuldu:', { 
-            type: blob.type, 
-            size: blob.size 
-          });
-          
-          if (blob.size === 0) {
-            throw new Error('Dosya boş');
-          }
-          
-          const blobUrl = URL.createObjectURL(blob);
-          setDocumentBlobUrl(blobUrl);
-        } else {
+        if (!response.ok) {
           const errorText = await response.text().catch(() => 'Bilinmeyen hata');
           console.error('❌ Belge yükleme hatası:', { 
             status: response.status, 
             statusText: response.statusText, 
-            error: errorText 
+            error: errorText,
+            fullUrl
           });
-          setDocumentError(true);
-          setToast({
-            message: `Belge yüklenemedi (${response.status}: ${response.statusText})`,
-            type: 'error',
-            isVisible: true
-          });
+          throw new Error(`Belge yüklenemedi: ${response.status} ${response.statusText}`);
         }
+        
+        const blob = await response.blob();
+        console.log('📄 Blob oluşturuldu:', { 
+          type: blob.type, 
+          size: blob.size 
+        });
+        
+        if (blob.size === 0) {
+          throw new Error('Dosya boş veya geçersiz');
+        }
+        
+        // Blob tipini kontrol et
+        if (!blob.type || blob.type === 'application/octet-stream') {
+          // Content-Type header'dan tip al
+          const contentType = response.headers.get('content-type');
+          if (contentType) {
+            console.log('📄 Content-Type header\'dan alındı:', contentType);
+          }
+        }
+        
+        const blobUrl = URL.createObjectURL(blob);
+        setDocumentBlobUrl(blobUrl);
+        setDocumentError(false);
+        
+        console.log('✅ Belge başarıyla yüklendi:', blobUrl);
       } catch (error: any) {
         console.error('❌ Belge yükleme hatası:', error);
         setDocumentError(true);
         setToast({
-          message: error.message || 'Belge yüklenirken bir hata oluştu',
+          message: error.message || 'Belge yüklenirken bir hata oluştu. Lütfen indirerek görüntüleyin.',
           type: 'error',
           isVisible: true
         });
@@ -349,40 +449,52 @@ function CiftlikProfil() {
     try {
       const token = localStorage.getItem('token');
       
-      // URL formatını düzelt - Backend'den gelen URL zaten tam URL olabilir
-      let fullUrl = url;
-      if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        // Relative path ise API URL ile birleştir
-        const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-        if (url.startsWith('/api')) {
-          const baseUrl = apiBaseUrl.replace('/api', '');
-          fullUrl = `${baseUrl}${url}`;
-        } else {
-          fullUrl = `${apiBaseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
-        }
-      } else {
-        // Backend'den gelen tam URL - domain'i normalize et
+      // Önce URL'yi normalize et (özellikle /uploads/ → /api/documents/file/ dönüşümü için)
+      let normalizedUrl = normalizeImageUrl(url) || url;
+      
+      // Backend'den gelen URL zaten tam URL olabilir: http://localhost:5000/api/documents/file/farmer/userId/filename.pdf
+      // Sadece domain'i normalize et, path'i olduğu gibi bırak
+      let fullUrl = normalizedUrl;
+      
+      if (normalizedUrl.startsWith('http://') || normalizedUrl.startsWith('https://')) {
+        // Tam URL ise, sadece domain'i kontrol et
         try {
           const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
           const apiUrlObj = new URL(apiBaseUrl);
-          const urlObj = new URL(url);
+          const urlObj = new URL(normalizedUrl);
           
-          // Path ve query string'i koru, domain'i frontend'in beklediği domain ile değiştir
-          fullUrl = `${apiUrlObj.protocol}//${apiUrlObj.host}${urlObj.pathname}${urlObj.search}`;
+          // Domain farklıysa normalize et, path'i olduğu gibi bırak
+          if (urlObj.host !== apiUrlObj.host || urlObj.protocol !== apiUrlObj.protocol) {
+            fullUrl = `${apiUrlObj.protocol}//${apiUrlObj.host}${urlObj.pathname}${urlObj.search}`;
+          }
         } catch (e) {
-          // URL parse edilemezse olduğu gibi kullan
-          console.warn('⚠️ URL parse edilemedi, olduğu gibi kullanılıyor:', url);
-          fullUrl = url;
+          console.warn('⚠️ URL parse edilemedi, olduğu gibi kullanılıyor:', normalizedUrl);
+          fullUrl = normalizedUrl;
+        }
+      } else {
+        // Relative path ise, tam URL'ye çevir
+        const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+        const baseUrl = apiBaseUrl.replace('/api', '');
+        if (normalizedUrl.startsWith('/api')) {
+          fullUrl = `${baseUrl}${normalizedUrl}`;
+        } else {
+          fullUrl = `${baseUrl}/api/documents/file/${normalizedUrl.startsWith('/') ? normalizedUrl.substring(1) : normalizedUrl}`;
         }
       }
       
-      console.log('📥 Belge indirme:', { originalUrl: url, fullUrl });
+      console.log('📥 Belge indirme:', {
+        originalUrl: url,
+        normalizedUrl,
+        fullUrl
+      });
       
       // Fetch ile blob al
       const response = await fetch(fullUrl, {
+        method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
         },
+        credentials: 'include', // CORS için
       });
       
       if (!response.ok) {
@@ -447,8 +559,8 @@ function CiftlikProfil() {
     return (
       <div className="bg-background-light dark:bg-background-dark font-display text-content-light dark:text-content-dark min-h-screen flex flex-col">
         <CftNavbar 
-          logoUrl={ciftlikBilgileri.logo_url || ciftlikBilgileri.website || undefined}
-          farmName={ciftlikBilgileri.ad || undefined}
+          logoUrl={normalizeImageUrl(ciftlikBilgileri.logo_url) || normalizeImageUrl(ciftlikBilgileri.website) || undefined}
+          farmName={ciftlikBilgileri.ad}
         />
         <main className="flex-1 container mx-auto px-4 sm:px-6 lg:px-8 py-8 pt-24">
           <div className="max-w-5xl mx-auto">
@@ -467,8 +579,8 @@ function CiftlikProfil() {
   return (
     <div className="bg-background-light dark:bg-background-dark font-display text-content-light dark:text-content-dark min-h-screen flex flex-col">
       <CftNavbar 
-        logoUrl={ciftlikBilgileri.logo_url || ciftlikBilgileri.website || undefined}
-        farmName={ciftlikBilgileri.ad || undefined}
+        logoUrl={normalizeImageUrl(ciftlikBilgileri.logo_url) || normalizeImageUrl(ciftlikBilgileri.website) || undefined}
+        farmName={ciftlikBilgileri.ad}
       />
       <main className="flex-1 container mx-auto px-4 sm:px-6 lg:px-8 py-8 pt-24">
         <div className="max-w-5xl mx-auto">
@@ -493,12 +605,21 @@ function CiftlikProfil() {
                   <div className="w-24 h-24 rounded-full overflow-hidden bg-primary/20 dark:bg-primary/30 flex items-center justify-center border-2 border-primary/30 dark:border-primary/50">
                     {(fotoPreview || ciftlikBilgileri.logo_url || ciftlikBilgileri.website) ? (
                       <img 
-                        src={fotoPreview || ciftlikBilgileri.logo_url || ciftlikBilgileri.website || ''} 
+                        src={fotoPreview || normalizeImageUrl(ciftlikBilgileri.logo_url) || normalizeImageUrl(ciftlikBilgileri.website) || ''} 
                         alt={ciftlikBilgileri.ad}
                         className="w-full h-full object-cover"
                         onError={(e) => {
-                          console.error('Resim yüklenemedi:', e.currentTarget.src);
-                          e.currentTarget.style.display = 'none';
+                          const failedUrl = e.currentTarget.src;
+                          console.warn('⚠️ Logo yüklenemedi:', failedUrl);
+                          // URL'i normalize et ve tekrar dene
+                          const normalizedUrl = normalizeImageUrl(failedUrl);
+                          if (normalizedUrl && normalizedUrl !== failedUrl) {
+                            console.log('🔄 Normalize edilmiş URL ile tekrar deneniyor:', normalizedUrl);
+                            e.currentTarget.src = normalizedUrl;
+                          } else {
+                            // Yine yüklenemezse gizle
+                            e.currentTarget.style.display = 'none';
+                          }
                         }}
                       />
                     ) : (
@@ -1275,15 +1396,53 @@ function CiftlikProfil() {
                   );
                 }
                 
-                // Hata durumu
-                if (documentError) {
+                // PDF görüntüleme - blob URL varsa göster
+                if (isPdf && documentBlobUrl) {
+                  return (
+                    <div className="w-full h-[70vh] rounded-lg border border-border-light dark:border-border-dark overflow-hidden">
+                      <iframe
+                        src={`${documentBlobUrl}#toolbar=0`}
+                        className="w-full h-full"
+                        title={selectedBelgeName}
+                        onError={() => {
+                          console.error('❌ PDF iframe yükleme hatası');
+                          setDocumentError(true);
+                        }}
+                      />
+                    </div>
+                  );
+                }
+                
+                // Resim görüntüleme - blob URL varsa göster
+                if (isImage && documentBlobUrl) {
+                  return (
+                    <div className="flex items-center justify-center">
+                      <img
+                        src={documentBlobUrl}
+                        alt={selectedBelgeName}
+                        className="max-w-full max-h-[70vh] object-contain rounded-lg border border-border-light dark:border-border-dark"
+                        onError={() => {
+                          // Resim yüklenemezse hata durumuna geç
+                          setDocumentError(true);
+                          if (documentBlobUrl) {
+                            URL.revokeObjectURL(documentBlobUrl);
+                            setDocumentBlobUrl(null);
+                          }
+                        }}
+                      />
+                    </div>
+                  );
+                }
+                
+                // Blob URL yoksa ve hata varsa - sessizce indirme butonu göster
+                if (documentError && !documentBlobUrl) {
                   return (
                     <div className="flex flex-col items-center justify-center p-8 text-center min-h-[60vh]">
                       <span className="material-symbols-outlined text-6xl text-subtle-light dark:text-subtle-dark mb-4">
-                        {isPdf ? 'picture_as_pdf' : 'broken_image'}
+                        {isPdf ? 'picture_as_pdf' : isImage ? 'image' : 'description'}
                       </span>
                       <p className="text-content-light dark:text-content-dark mb-4">
-                        {isPdf ? 'PDF yüklenemedi' : 'Resim yüklenemedi'}
+                        Belge görüntülenemedi
                       </p>
                       <button
                         onClick={() => handleDownloadDocument(selectedBelgeUrl, selectedBelgeName)}
@@ -1296,38 +1455,7 @@ function CiftlikProfil() {
                   );
                 }
                 
-                // PDF görüntüleme
-                if (isPdf && documentBlobUrl) {
-                  return (
-                    <iframe
-                      src={documentBlobUrl}
-                      className="w-full h-[70vh] rounded-lg border border-border-light dark:border-border-dark"
-                      title={selectedBelgeName}
-                    />
-                  );
-                }
-                
-                // Resim görüntüleme
-                if (isImage && documentBlobUrl) {
-                  return (
-                    <div className="flex items-center justify-center">
-                      <img
-                        src={documentBlobUrl}
-                        alt={selectedBelgeName}
-                        className="max-w-full max-h-[70vh] object-contain rounded-lg border border-border-light dark:border-border-dark"
-                        onError={() => {
-                          setDocumentError(true);
-                          if (documentBlobUrl) {
-                            URL.revokeObjectURL(documentBlobUrl);
-                            setDocumentBlobUrl(null);
-                          }
-                        }}
-                      />
-                    </div>
-                  );
-                }
-                
-                // Desteklenmeyen dosya türü veya blob URL yoksa
+                // Desteklenmeyen dosya türü veya beklenmedik durum
                 return (
                   <div className="flex flex-col items-center justify-center p-8 text-center min-h-[60vh]">
                     <span className="material-symbols-outlined text-6xl text-subtle-light dark:text-subtle-dark mb-4">

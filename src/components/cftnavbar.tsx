@@ -1,11 +1,106 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { ciftciService } from '../services/ciftciService';
 
-function CftNavbar() {
+interface CftNavbarProps {
+  logoUrl?: string;
+  farmName?: string;
+}
+
+// URL normalize fonksiyonu - /uploads/ path'lerini /api/documents/file/ ile değiştir
+const normalizeImageUrl = (url: string | null | undefined): string | null => {
+  if (!url || url.trim() === '') return null;
+  
+  // Eğer URL /uploads/ içeriyorsa, /api/documents/file/ ile değiştir
+  if (url.includes('/uploads/')) {
+    const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    const baseUrl = apiBaseUrl.replace('/api', '');
+    const uploadsIndex = url.indexOf('/uploads/');
+    if (uploadsIndex !== -1) {
+      const pathAfterUploads = url.substring(uploadsIndex + '/uploads/'.length);
+      return `${baseUrl}/api/documents/file/${pathAfterUploads}`;
+    }
+  }
+  
+  // Eğer tam URL ise ve domain normalize edilmesi gerekiyorsa
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    try {
+      const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      const apiUrlObj = new URL(apiBaseUrl);
+      const urlObj = new URL(url);
+      
+      // Eğer path /uploads/ içeriyorsa, /api/documents/file/ ile değiştir
+      let path = urlObj.pathname;
+      if (path.includes('/uploads/')) {
+        const uploadsIndex = path.indexOf('/uploads/');
+        const pathAfterUploads = path.substring(uploadsIndex + '/uploads/'.length);
+        path = `/api/documents/file/${pathAfterUploads}`;
+      }
+      
+      return `${apiUrlObj.protocol}//${apiUrlObj.host}${path}${urlObj.search}`;
+    } catch (e) {
+      // URL parse edilemezse olduğu gibi döndür
+      return url;
+    }
+  }
+  
+  return url;
+};
+
+function CftNavbar({ logoUrl: propLogoUrl, farmName: propFarmName }: CftNavbarProps = {}) {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false);
+  const [logoError, setLogoError] = useState(false);
+  const [logoUrl, setLogoUrl] = useState<string | undefined>(propLogoUrl);
+  const [farmName, setFarmName] = useState<string | undefined>(propFarmName);
   const navigate = useNavigate();
   const location = useLocation();
+
+  const kullaniciTipi = location.pathname.startsWith('/ciftlik') || location.pathname.startsWith('/atiklar/ekle') ? 'ciftci' : 'firma';
+
+  // Çiftlik profilini yükle (sadece çiftçi sayfalarında ve prop geçilmemişse)
+  useEffect(() => {
+    // Eğer prop geçilmişse, prop'u kullan
+    if (propLogoUrl !== undefined) {
+      setLogoUrl(propLogoUrl);
+    }
+    if (propFarmName !== undefined) {
+      setFarmName(propFarmName);
+    }
+
+    // Eğer çiftçi sayfasındaysak ve prop geçilmemişse, API'den çek
+    if (kullaniciTipi === 'ciftci' && propLogoUrl === undefined && propFarmName === undefined) {
+      const fetchProfile = async () => {
+        try {
+          const response = await ciftciService.getCiftlikProfil();
+          if (response.success && response.profil) {
+            const profil = response.profil;
+            
+            // logo_url yoksa website'den al
+            let finalLogoUrl = profil.logo_url || profil.website;
+            
+            // Logo URL'lerini normalize et
+            if (finalLogoUrl) {
+              finalLogoUrl = normalizeImageUrl(finalLogoUrl) || finalLogoUrl;
+            }
+            
+            setLogoUrl(finalLogoUrl);
+            setFarmName(profil.ad);
+          }
+        } catch (error) {
+          console.error('Çiftlik profili yüklenemedi:', error);
+          // Hata durumunda sessizce devam et
+        }
+      };
+      
+      fetchProfile();
+    }
+  }, [kullaniciTipi, propLogoUrl, propFarmName]);
+
+  // Logo URL değiştiğinde hata durumunu sıfırla
+  useEffect(() => {
+    setLogoError(false);
+  }, [logoUrl]);
 
   // Bildirimler - gerçek uygulamada API'den gelecek
   const [bildirimler, setBildirimler] = useState([
@@ -48,9 +143,8 @@ function CftNavbar() {
     setBildirimler(prev => prev.filter(b => b.id !== id));
   };
 
-  // Çiftçi/Firma bilgileri - gerçek uygulamada context veya state'den gelecek
-  const kullaniciAdi = 'Çiftlik Adı'; // Bu değer gerçek uygulamada dinamik olacak
-  const kullaniciTipi = location.pathname.startsWith('/ciftlik') || location.pathname.startsWith('/atiklar/ekle') ? 'ciftci' : 'firma';
+  // Çiftçi/Firma bilgileri - prop'tan veya varsayılan değer
+  const kullaniciAdi = farmName || 'Çiftlik Adı';
 
   const handleLogout = () => {
     // Çıkış yapma işlemi
@@ -264,8 +358,21 @@ function CftNavbar() {
                 type="button"
                 onClick={() => setIsProfileMenuOpen((prev) => !prev)}
               >
-                <div className="w-8 h-8 rounded-full bg-primary/20 dark:bg-primary/30 flex items-center justify-center">
-                  <span className={`material-symbols-outlined text-primary text-base ${kullaniciTipi === 'ciftci' ? 'agriculture' : 'business'}`}></span>
+                <div className="w-8 h-8 rounded-full bg-primary/20 dark:bg-primary/30 flex items-center justify-center overflow-hidden">
+                  {logoUrl && !logoError ? (
+                    <img 
+                      src={logoUrl} 
+                      alt={kullaniciAdi}
+                      className="w-full h-full object-cover"
+                      crossOrigin="anonymous"
+                      onError={() => {
+                        // Resim yüklenemezse icon göster
+                        setLogoError(true);
+                      }}
+                    />
+                  ) : (
+                    <span className={`material-symbols-outlined text-primary text-base ${kullaniciTipi === 'ciftci' ? 'agriculture' : 'business'}`}></span>
+                  )}
                 </div>
                 <span className="hidden sm:block text-sm font-medium text-content-light dark:text-content-dark">{kullaniciAdi}</span>
                 <span className="material-symbols-outlined text-subtle-light dark:text-subtle-dark text-base">expand_more</span>

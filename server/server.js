@@ -12,7 +12,11 @@ const multer = require('multer');
 
 const app = express();
 
-app.use(helmet());
+// Helmet yapılandırması - Cross-Origin-Resource-Policy'yi devre dışı bırak
+// Çünkü resimler ve belgeler cross-origin isteklerle yükleniyor
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 app.use(cors({
     origin: function (origin, callback) {
         // İzin verilen origin'ler

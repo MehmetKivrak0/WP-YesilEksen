@@ -93,6 +93,20 @@ const getDocument = async (req, res) => {
         // Content-Type header'ını set et
         res.setHeader('Content-Type', contentType);
         
+        // CORS headers - resimler ve belgeler için cross-origin isteklere izin ver
+        const origin = req.headers.origin;
+        const allowedOrigins = [
+            'http://localhost:5174',
+            'http://localhost:5173',
+            process.env.CLIENT_URL
+        ].filter(Boolean);
+        
+        if (origin && allowedOrigins.includes(origin)) {
+            res.setHeader('Access-Control-Allow-Origin', origin);
+            res.setHeader('Access-Control-Allow-Credentials', 'true');
+        }
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+        
         // İndirme mi yoksa görüntüleme mi?
         const download = req.query.download === 'true';
         

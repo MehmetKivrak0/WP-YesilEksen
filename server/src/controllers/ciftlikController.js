@@ -840,11 +840,21 @@ const getCiftlikProfil = async (req, res) => {
                         } else {
                             // Relative path ise /api/documents/file/ ile birleştir
                             // row.dosya_url formatı: "farmer/userId/filename.pdf" (zaten / ile başlamıyor)
-                            const normalizedPath = row.dosya_url.startsWith('/') 
+                            let normalizedPath = row.dosya_url.startsWith('/') 
                                 ? row.dosya_url.substring(1) 
                                 : row.dosya_url;
-                            // Path'i encode et (özel karakterler için)
-                            const encodedPath = encodeURIComponent(normalizedPath).replace(/%2F/g, '/');
+                            
+                            // Eğer path'te "farmer/" yoksa, eski kayıt olabilir - userId ile path oluştur
+                            if (!normalizedPath.includes('farmer/') && !normalizedPath.includes('/')) {
+                                // Sadece dosya adı var, path ekle
+                                normalizedPath = `farmer/${user_id}/${normalizedPath}`;
+                            }
+                            
+                            // Path'i encode et - sadece dosya adındaki özel karakterleri encode et, / karakterlerini koru
+                            // Her path segment'ini ayrı ayrı encode et
+                            const pathSegments = normalizedPath.split('/');
+                            const encodedSegments = pathSegments.map(segment => encodeURIComponent(segment));
+                            const encodedPath = encodedSegments.join('/');
                             documentUrl = `${baseUrl}/api/documents/file/${encodedPath}`;
                         }
                     }
