@@ -303,7 +303,7 @@ const getProductApplications = async (req, res) => {
 
         const offset = (page - 1) * limit;
 
-        let whereClause = "WHERE u.durum IN ('beklemede', 'onaylandi', 'revizyon', 'incelemede')";
+        let whereClause = "WHERE u.durum IN ('beklemede', 'onaylandi', 'revizyon', 'incelemede', 'reddedildi')";
         const params = [];
         let paramIndex = 1;
 
@@ -314,7 +314,7 @@ const getProductApplications = async (req, res) => {
         }
 
         if (search) {
-            whereClause += ` AND (u.urun_adi ILIKE $${paramIndex} OR u.basvuran_adi ILIKE $${paramIndex} OR c.ad ILIKE $${paramIndex})`;
+            whereClause += ` AND (u.urun_adi ILIKE $${paramIndex} OR u.basvuran_adi ILIKE $${paramIndex} OR c.ad ILIKE $${paramIndex} OR uk.ad ILIKE $${paramIndex})`;
             params.push(`%${search}%`);
             paramIndex++;
         }
@@ -325,6 +325,7 @@ const getProductApplications = async (req, res) => {
             FROM urun_basvurulari u
             JOIN ciftlikler c ON u.ciftlik_id = c.id
             JOIN kullanicilar k ON c.kullanici_id = k.id
+            LEFT JOIN urun_kategorileri uk ON u.kategori_id = uk.id
             ${whereClause}
         `;
         const countResult = await pool.query(countQuery, params);
@@ -342,12 +343,15 @@ const getProductApplications = async (req, res) => {
                 u.durum as status,
                 u.guncelleme as "lastUpdate",
                 u.id::text as "applicationNumber",
-                COALESCE(c.aciklama, '') as sector,
-                EXTRACT(YEAR FROM c.olusturma)::INTEGER as "establishmentYear",
+                COALESCE(uk.ad, 'Çiftlik Atıkları') as sector,
+                COALESCE(EXTRACT(YEAR FROM c.olusturma)::INTEGER, EXTRACT(YEAR FROM CURRENT_TIMESTAMP)::INTEGER) as "establishmentYear",
                 '1-5' as "employeeCount",
                 k.eposta as email,
+                COALESCE(c.telefon, k.telefon, '') as phone,
+                c.ad as "farmName",
+                k.ad || ' ' || k.soyad as "contactName",
                 u.basvuru_tarihi as "applicationDate",
-                COALESCE(c.vergi_no, '') as "taxNumber",
+                '' as "taxNumber",
                 COALESCE(u.notlar, '') as description,
                 COALESCE(
                     json_agg(
@@ -370,11 +374,12 @@ const getProductApplications = async (req, res) => {
             FROM urun_basvurulari u
             JOIN ciftlikler c ON u.ciftlik_id = c.id
             JOIN kullanicilar k ON c.kullanici_id = k.id
+            LEFT JOIN urun_kategorileri uk ON u.kategori_id = uk.id
             LEFT JOIN belgeler b ON b.basvuru_id::text = u.id::text AND b.basvuru_tipi = 'urun_basvurusu'
             LEFT JOIN belge_turleri bt ON b.belge_turu_id = bt.id AND bt.id IS NOT NULL
             ${whereClause}
             GROUP BY u.id, u.urun_adi, u.basvuran_adi, u.durum, u.guncelleme, u.basvuru_tarihi, 
-                     u.notlar, c.aciklama, c.olusturma, c.vergi_no, k.eposta
+                     u.notlar, uk.ad, c.olusturma, k.eposta, c.telefon, k.telefon, c.ad, k.ad, k.soyad
             ORDER BY u.basvuru_tarihi DESC
             LIMIT $${limitParamIndex} OFFSET $${offsetParamIndex}
         `;

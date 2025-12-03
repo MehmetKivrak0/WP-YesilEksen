@@ -274,13 +274,67 @@ const addProduct = async (req, res) => {
         }
         const ciftlik_id = ciftlikResult.rows[0].id;
 
-        //ürün oluştur
+        // Kategori ID'sini bul veya oluştur
+        const kategoriResult = await pool.query(
+            `SELECT id FROM urun_kategorileri WHERE ad = $1 OR kod = $2 LIMIT 1`,
+            [category, category.toUpperCase().replace(/\s+/g, '_')]
+        );
+        let kategori_id;
+        if (kategoriResult.rows.length > 0) {
+            kategori_id = kategoriResult.rows[0].id;
+        } else {
+            // Kategori yoksa oluştur
+            const newKategoriResult = await pool.query(
+                `INSERT INTO urun_kategorileri (kod, ad, aktif) 
+                VALUES ($1, $2, TRUE) 
+                RETURNING id`,
+                [category.toUpperCase().replace(/\s+/g, '_'), category]
+            );
+            kategori_id = newKategoriResult.rows[0].id;
+        }
+
+        // Birim ID'sini bul veya oluştur
+        const birimResult = await pool.query(
+            `SELECT id FROM birimler WHERE kod = $1 LIMIT 1`,
+            [birim]
+        );
+        let birim_id;
+        if (birimResult.rows.length > 0) {
+            birim_id = birimResult.rows[0].id;
+        } else {
+            // Birim yoksa oluştur
+            const birimAd = birim === 'ton' ? 'Ton' : birim === 'kg' ? 'Kilogram' : birim === 'm3' ? 'Metreküp' : birim === 'litre' ? 'Litre' : birim;
+            const birimSembol = birim === 'ton' ? 'ton' : birim === 'kg' ? 'kg' : birim === 'm3' ? 'm³' : birim === 'litre' ? 'lt' : birim;
+            const birimTur = (birim === 'ton' || birim === 'kg') ? 'agirlik' : 'hacim';
+            const newBirimResult = await pool.query(
+                `INSERT INTO birimler (kod, ad, sembol, tur) 
+                VALUES ($1, $2, $3, $4) 
+                RETURNING id`,
+                [birim, birimAd, birimSembol, birimTur]
+            );
+            birim_id = newBirimResult.rows[0].id;
+        }
+
+        // Ürün oluştur (gerçek kolonlar - kategori_id, birim_id, ad zorunlu)
         const result = await pool.query(
             `INSERT INTO urunler 
-            (ciftlik_id, baslik, aciklama, miktar, birim, fiyat, kategori, durum)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 'aktif')
+            (ciftlik_id, kategori_id, ad, baslik, aciklama, birim_id, mevcut_miktar, miktar, birim_fiyat, fiyat, birim, kategori, durum)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'aktif')
             RETURNING *`,
-            [ciftlik_id, title, desc, miktar, birim, price, category]
+            [
+                ciftlik_id,
+                kategori_id,        // kategori_id (UUID referans) - ZORUNLU
+                title,              // ad kolonu - ZORUNLU
+                title,              // baslik kolonu (bağımsız)
+                desc,               // aciklama
+                birim_id,           // birim_id (UUID referans) - ZORUNLU
+                parseFloat(miktar), // mevcut_miktar
+                parseFloat(miktar), // miktar (bağımsız)
+                parseFloat(price),  // birim_fiyat
+                parseFloat(price),  // fiyat (bağımsız)
+                birim,              // birim (string: ton, kg, m3, litre)
+                category            // kategori (string)
+            ]
         );
 
         res.status(201).json({
@@ -294,6 +348,542 @@ const addProduct = async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Ürün eklenemedi'
+        });
+    }
+};
+
+// Atık türleri (frontend ile uyumlu)
+const wasteTypes = [
+    { value: 'hayvansal-gubre', label: 'Hayvansal Gübre' },
+    { value: 'misir-sapi', label: 'Mısır Sapı' },
+    { value: 'bugday-samani', label: 'Buğday Samanı' },
+    { value: 'aycicegi-sapi', label: 'Ayçiçeği Sapı' },
+    { value: 'pamuk-atik', label: 'Pamuk Atığı' },
+    { value: 'zeytin-karasuyu', label: 'Zeytin Karasuyu' },
+    { value: 'sebze-atiklari', label: 'Sebze Atıkları' },
+    { value: 'arpa-samani', label: 'Arpa Samanı' },
+    { value: 'yonca-atik', label: 'Yonca Atığı' },
+    { value: 'pirinc-kabugu', label: 'Pirinç Kabuğu' },
+    { value: 'meyve-atiklari', label: 'Meyve Atıkları' },
+    { value: 'tavuk-gubresi', label: 'Tavuk Gübresi' },
+    { value: 'sigir-gubresi', label: 'Sığır Gübresi' },
+    { value: 'koyun-gubresi', label: 'Koyun Gübresi' },
+    { value: 'odun-talasi', label: 'Odun Talaşı' },
+    { value: 'findik-kabugu', label: 'Fındık Kabuğu' },
+    { value: 'ceviz-kabugu', label: 'Ceviz Kabuğu' },
+    { value: 'diger', label: 'Diğer (Manuel Giriş)' }
+];
+
+// Atık/Ürün Ekleme (Belgelerle birlikte)
+const addWasteProduct = async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const user_id = req.user.id;
+        const { atikTuru, miktar, birim, isAnalyzed, hasGuarantee } = req.body;
+
+        // Validasyon
+        if (!atikTuru || !miktar || !birim) {
+            return res.status(400).json({
+                success: false,
+                message: 'Gerekli alanları doldurunuz (atık türü, miktar, birim)'
+            });
+        }
+
+        // Dosya kontrolü
+        if (!req.files || !req.files.productPhoto || !req.files.originDocument) {
+            return res.status(400).json({
+                success: false,
+                message: 'Ürün fotoğrafı ve menşei belgesi zorunludur'
+            });
+        }
+
+        // Analizli ürün için analiz raporu kontrolü
+        if (isAnalyzed === 'true' && !req.files.analysisReport) {
+            return res.status(400).json({
+                success: false,
+                message: 'Analizli ürün için laboratuvar analiz raporu gereklidir'
+            });
+        }
+
+        // Garanti içerikli ürün için garanti belgesi kontrolü
+        if (hasGuarantee === 'true' && !req.files.guaranteeDocument) {
+            return res.status(400).json({
+                success: false,
+                message: 'Garanti içerikli ürün için garanti belgesi gereklidir'
+            });
+        }
+
+        // Çiftlik ID'sini al (middleware'den geliyor)
+        const ciftlik_id = req.ciftlik_id;
+        if (!ciftlik_id) {
+            return res.status(404).json({
+                success: false,
+                message: 'Çiftlik bulunamadı'
+            });
+        }
+
+        await client.query('BEGIN');
+
+        // Base URL oluştur (mutlak URL için)
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        
+        // Dosya yollarını kaydet - User ID'sine göre tam yol (sertifika mantığı gibi)
+        const uploadsDir = path.join(__dirname, '../../uploads');
+        
+        // Dosya yollarını oluştur - Relative path (farmer/{user_id}/ formatında) ve mutlak URL
+        const getFullPath = (file) => {
+            if (!file) return { relativePath: null, absoluteUrl: null };
+            
+            // Multer disk storage kullanıyorsa file.path var
+            if (file.path) {
+                // Dosya zaten farmer/{user_id}/ klasörüne kaydedilmiş
+                // Tam relative path'i al (uploads klasöründen itibaren)
+                const relativePath = path.relative(uploadsDir, file.path).replace(/\\/g, '/');
+                // Path formatı: farmer/{user_id}/{filename}
+                // Mutlak URL oluştur
+                const absoluteUrl = `${baseUrl}/uploads/${relativePath}`;
+                return { relativePath, absoluteUrl };
+            } else if (file.buffer) {
+                // Eğer buffer varsa (memory storage), farmer/{user_id}/ klasörüne kaydet
+                const farmerDir = path.join(uploadsDir, 'farmer', user_id.toString());
+                if (!fs.existsSync(farmerDir)) {
+                    fs.mkdirSync(farmerDir, { recursive: true });
+                }
+                const timestamp = Date.now();
+                const ext = path.extname(file.originalname);
+                const sanitizedName = file.originalname.replace(/[^a-zA-Z0-9.]/g, '_');
+                const filename = `${timestamp}-${sanitizedName}`;
+                const filePath = path.join(farmerDir, filename);
+                fs.writeFileSync(filePath, file.buffer);
+                const relativePath = `farmer/${user_id}/${filename}`;
+                const absoluteUrl = `${baseUrl}/uploads/${relativePath}`;
+                return { relativePath, absoluteUrl };
+            }
+            return { relativePath: null, absoluteUrl: null };
+        };
+
+        const productPhoto = getFullPath(Array.isArray(req.files.productPhoto) ? req.files.productPhoto[0] : req.files.productPhoto);
+        const originDocument = getFullPath(Array.isArray(req.files.originDocument) ? req.files.originDocument[0] : req.files.originDocument);
+        const analysisReport = req.files.analysisReport ? getFullPath(Array.isArray(req.files.analysisReport) ? req.files.analysisReport[0] : req.files.analysisReport) : { relativePath: null, absoluteUrl: null };
+        const guaranteeDocument = req.files.guaranteeDocument ? getFullPath(Array.isArray(req.files.guaranteeDocument) ? req.files.guaranteeDocument[0] : req.files.guaranteeDocument) : { relativePath: null, absoluteUrl: null };
+
+        // Ek fotoğraf (tek dosya)
+        const additionalPhoto = req.files.additionalPhoto ? getFullPath(Array.isArray(req.files.additionalPhoto) ? req.files.additionalPhoto[0] : req.files.additionalPhoto) : { relativePath: null, absoluteUrl: null };
+
+        // Kalite sertifikası (tek dosya)
+        const qualityCertificate = req.files.qualityCertificate ? getFullPath(Array.isArray(req.files.qualityCertificate) ? req.files.qualityCertificate[0] : req.files.qualityCertificate) : { relativePath: null, absoluteUrl: null };
+
+        // Atık türü bilgisini al
+        // Eğer atikTuru wasteTypes'da yoksa, bu "Diğer" atık türü için manuel girilen addır
+        const selectedWaste = wasteTypes.find(w => w.value === atikTuru);
+        // Diğer atık türü için atikTuru direkt kullanılır (customWasteName frontend'den gelir)
+        const baslik = selectedWaste ? selectedWaste.label : atikTuru;
+        
+        // Kategori ID'sini bul (Çiftlik Atıkları için)
+        const kategoriResult = await client.query(
+            `SELECT id FROM urun_kategorileri WHERE kod = 'ATIK' OR ad = 'Çiftlik Atıkları' LIMIT 1`
+        );
+        let kategori_id;
+        if (kategoriResult.rows.length > 0) {
+            kategori_id = kategoriResult.rows[0].id;
+        } else {
+            // Kategori yoksa oluştur
+            const newKategoriResult = await client.query(
+                `INSERT INTO urun_kategorileri (kod, ad, aktif) 
+                VALUES ('ATIK', 'Çiftlik Atıkları', TRUE) 
+                RETURNING id`
+            );
+            kategori_id = newKategoriResult.rows[0].id;
+        }
+
+        // Birim ID'sini bul
+        const birimResult = await client.query(
+            `SELECT id FROM birimler WHERE kod = $1 LIMIT 1`,
+            [birim]
+        );
+        let birim_id;
+        if (birimResult.rows.length > 0) {
+            birim_id = birimResult.rows[0].id;
+        } else {
+            // Birim yoksa oluştur
+            const birimAd = birim === 'ton' ? 'Ton' : birim === 'kg' ? 'Kilogram' : birim === 'm3' ? 'Metreküp' : birim === 'litre' ? 'Litre' : birim;
+            const birimSembol = birim === 'ton' ? 'ton' : birim === 'kg' ? 'kg' : birim === 'm3' ? 'm³' : birim === 'litre' ? 'lt' : birim;
+            const birimTur = (birim === 'ton' || birim === 'kg') ? 'agirlik' : 'hacim';
+            const newBirimResult = await client.query(
+                `INSERT INTO birimler (kod, ad, sembol, tur) 
+                VALUES ($1, $2, $3, $4) 
+                RETURNING id`,
+                [birim, birimAd, birimSembol, birimTur]
+            );
+            birim_id = newBirimResult.rows[0].id;
+        }
+
+        // Kategori string değerini al
+        const kategoriString = 'Çiftlik Atıkları';
+        
+        // Birim string değerini al (kod'dan)
+        const birimString = birim;
+
+        // Kullanıcı bilgilerini al (basvuran_adi için)
+        const userResult = await client.query(
+            `SELECT ad, soyad FROM kullanicilar WHERE id = $1`,
+            [user_id]
+        );
+        const basvuranAdi = userResult.rows.length > 0 
+            ? `${userResult.rows[0].ad} ${userResult.rows[0].soyad}`.trim()
+            : 'Bilinmeyen Kullanıcı';
+
+        // Ürün oluştur (gerçek kolonlar - alias mantığı yok)
+        const productResult = await client.query(
+            `INSERT INTO urunler 
+            (ciftlik_id, kategori_id, ad, baslik, aciklama, birim_id, mevcut_miktar, miktar, birim_fiyat, fiyat, birim, kategori, durum)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'onay_bekliyor')
+            RETURNING *`,
+            [
+                ciftlik_id,
+                kategori_id,        // kategori_id (UUID referans)
+                baslik,              // ad kolonu
+                baslik,              // baslik kolonu (bağımsız)
+                `Atık Türü: ${baslik}, Miktar: ${miktar} ${birim}`,
+                birim_id,            // birim_id (UUID referans)
+                parseFloat(miktar),   // mevcut_miktar
+                parseFloat(miktar),   // miktar (bağımsız)
+                0,                    // birim_fiyat (Fiyat teklif sonrası belirlenir)
+                0,                    // fiyat (bağımsız)
+                birimString,          // birim (string: ton, kg, m3, litre)
+                kategoriString        // kategori (string: Çiftlik Atıkları)
+            ]
+        );
+
+        const productId = productResult.rows[0].id;
+
+        // Ürün başvurusu oluştur (urun_basvurulari tablosuna)
+        const basvuruResult = await client.query(
+            `INSERT INTO urun_basvurulari
+            (urun_id, ciftlik_id, basvuran_adi, urun_adi, kategori_id, durum)
+            VALUES ($1, $2, $3, $4, $5, 'incelemede')
+            RETURNING id`,
+            [
+                productId,
+                ciftlik_id,
+                basvuranAdi,
+                baslik,
+                kategori_id
+            ]
+        );
+
+        const basvuruId = basvuruResult.rows[0].id;
+
+        // Ürün fotoğrafını urun_resimleri tablosuna kaydet (mutlak URL)
+        if (productPhoto.absoluteUrl) {
+            await client.query(
+                `INSERT INTO urun_resimleri (urun_id, resim_url, sira_no, ana_resim)
+                VALUES ($1, $2, 1, TRUE)`,
+                [productId, productPhoto.absoluteUrl]
+            );
+        }
+
+        // Ek fotoğrafı kaydet (mutlak URL)
+        if (additionalPhoto.absoluteUrl) {
+            await client.query(
+                `INSERT INTO urun_resimleri (urun_id, resim_url, sira_no, ana_resim)
+                VALUES ($1, $2, 2, FALSE)`,
+                [productId, additionalPhoto.absoluteUrl]
+            );
+        }
+
+        // Kalite sertifikasını urun_sertifikalari tablosuna kaydet (mutlak URL)
+        if (qualityCertificate.absoluteUrl) {
+            // Sertifika türü ID'sini bul (varsayılan olarak ORGANIK)
+            const sertifikaTuruResult = await client.query(
+                `SELECT id FROM sertifika_turleri WHERE kod = 'ORGANIK' LIMIT 1`
+            );
+            let sertifikaTuruId = null;
+            if (sertifikaTuruResult.rows.length > 0) {
+                sertifikaTuruId = sertifikaTuruResult.rows[0].id;
+            }
+
+            await client.query(
+                `INSERT INTO urun_sertifikalari (urun_id, sertifika_turu_id, dosya_url)
+                VALUES ($1, $2, $3)`,
+                [productId, sertifikaTuruId, qualityCertificate.absoluteUrl]
+            );
+        }
+
+        // Belge türü kodları ve dosya adları
+        const belgeTypes = {
+            'originDocument': { kod: 'ciftci_kutugu', ad: 'Menşei Belgesi (ÇKS / İşletme Tescil)', file: req.files.originDocument[0], pathInfo: originDocument },
+            'analysisReport': { kod: 'analiz_raporu', ad: 'Laboratuvar Analiz Raporu', file: req.files.analysisReport ? req.files.analysisReport[0] : null, pathInfo: analysisReport },
+            'guaranteeDocument': { kod: 'garanti_belgesi', ad: 'Garanti Belgesi / Analiz Raporu', file: req.files.guaranteeDocument ? req.files.guaranteeDocument[0] : null, pathInfo: guaranteeDocument }
+        };
+
+        // Belge kaydetme helper fonksiyonu (mutlak URL kaydeder)
+        const saveBelge = async (belgeKod, belgeAd, pathInfo, dosya, basvuruIdParam) => {
+            // Belge türü ID'sini bul (kod'a göre)
+            const belgeTuruResult = await client.query(
+                `SELECT id FROM belge_turleri WHERE kod = $1`,
+                [belgeKod]
+            );
+            
+            let belgeTuruId;
+            if (belgeTuruResult.rows.length > 0) {
+                belgeTuruId = belgeTuruResult.rows[0].id;
+            } else {
+                // Belge türü yoksa oluştur
+                const newBelgeTuruResult = await client.query(
+                    `INSERT INTO belge_turleri (kod, ad, zorunlu, aktif)
+                    VALUES ($1, $2, $3, TRUE)
+                    RETURNING id`,
+                    [belgeKod, belgeAd, false] // Opsiyonel belgeler için zorunlu=false
+                );
+                belgeTuruId = newBelgeTuruResult.rows[0].id;
+            }
+
+            // Belgeyi kaydet (mutlak URL kullan)
+            if (!pathInfo || !pathInfo.absoluteUrl) {
+                return; // Dosya yoksa kaydetme
+            }
+            
+            await client.query(
+                `INSERT INTO belgeler 
+                (kullanici_id, ciftlik_id, basvuru_id, basvuru_tipi, belge_turu_id, ad, dosya_yolu, dosya_boyutu, dosya_tipi, durum, yuklenme)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'beklemede', NOW())`,
+                [
+                    user_id,
+                    ciftlik_id,
+                    basvuruIdParam, // basvuru_id (urun_basvurulari.id)
+                    'urun_basvurusu', // basvuru_tipi
+                    belgeTuruId,
+                    belgeAd,
+                    pathInfo.absoluteUrl, // Mutlak URL kaydet
+                    dosya ? dosya.size : null,
+                    dosya ? path.extname(dosya.originalname).substring(1).toLowerCase() : null
+                ]
+            );
+        };
+
+        // Menşei belgesi (zorunlu)
+        await saveBelge(
+            belgeTypes.originDocument.kod,
+            belgeTypes.originDocument.ad,
+            belgeTypes.originDocument.pathInfo,
+            belgeTypes.originDocument.file,
+            basvuruId
+        );
+
+        // Analiz raporu (varsa)
+        if (analysisReport.absoluteUrl && belgeTypes.analysisReport.file) {
+            await saveBelge(
+                belgeTypes.analysisReport.kod,
+                belgeTypes.analysisReport.ad,
+                belgeTypes.analysisReport.pathInfo,
+                belgeTypes.analysisReport.file,
+                basvuruId
+            );
+        }
+
+        // Garanti belgesi (varsa)
+        if (guaranteeDocument.absoluteUrl && belgeTypes.guaranteeDocument.file) {
+            await saveBelge(
+                belgeTypes.guaranteeDocument.kod,
+                belgeTypes.guaranteeDocument.ad,
+                belgeTypes.guaranteeDocument.pathInfo,
+                belgeTypes.guaranteeDocument.file,
+                basvuruId
+            );
+        }
+
+        await client.query('COMMIT');
+
+        res.status(201).json({
+            success: true,
+            message: 'Ürün başarıyla eklendi ve onay sürecine gönderildi',
+            productId: productId,
+            basvuruId: basvuruId
+        });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ Add waste product hatası:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Ürün eklenirken bir hata oluştu',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    } finally {
+        client.release();
+    }
+};
+
+// Tarih formatlama helper
+const formatRelativeTime = (date) => {
+    try {
+        const now = new Date();
+        const diff = now.getTime() - date.getTime();
+        const minutes = Math.floor(diff / 60000);
+        const hours = Math.floor(diff / 3600000);
+        const days = Math.floor(diff / 86400000);
+
+        if (minutes < 1) {
+            return 'Az önce';
+        } else if (minutes < 60) {
+            return `${minutes} dakika önce`;
+        } else if (hours < 24) {
+            return `${hours} saat önce`;
+        } else if (days === 1) {
+            return 'Dün';
+        } else if (days < 7) {
+            return `${days} gün önce`;
+        } else {
+            return date.toLocaleDateString('tr-TR');
+        }
+    } catch (error) {
+        return date.toLocaleDateString('tr-TR');
+    }
+};
+
+// Ürün Başvuru Durumlarını Getir - GET /api/ciftlik/urun-basvurulari
+const getMyProductApplications = async (req, res) => {
+    try {
+        const user_id = req.user.id;
+
+        // Çiftlik ID'sini bul
+        const ciftlikResult = await pool.query(
+            'SELECT id FROM ciftlikler WHERE kullanici_id = $1',
+            [user_id]
+        );
+
+        if (ciftlikResult.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Çiftlik bulunamadı'
+            });
+        }
+
+        const ciftlik_id = ciftlikResult.rows[0].id;
+
+        // Ürün başvurularını getir
+        const basvurularResult = await pool.query(
+            `SELECT 
+                ub.id,
+                ub.urun_id,
+                ub.urun_adi as product,
+                ub.basvuran_adi,
+                ub.durum,
+                ub.basvuru_tarihi as "submittedAt",
+                ub.guncelleme as "lastUpdate",
+                ub.notlar as "adminNotes",
+                ub.red_nedeni,
+                uk.ad as category
+            FROM urun_basvurulari ub
+            LEFT JOIN urun_kategorileri uk ON ub.kategori_id = uk.id
+            WHERE ub.ciftlik_id = $1
+            ORDER BY ub.basvuru_tarihi DESC`,
+            [ciftlik_id]
+        );
+
+        // Her başvuru için tüm belgeleri getir
+        const applications = await Promise.all(basvurularResult.rows.map(async (row) => {
+            const documents = [];
+
+            // Belgeler tablosundan belgeler
+            const belgelerResult = await pool.query(
+                `SELECT 
+                    COALESCE(bt.ad, b.ad, 'Belge') as name,
+                    CASE 
+                        WHEN b.durum = 'onaylandi' THEN 'Onaylandı'
+                        WHEN b.durum = 'reddedildi' THEN 'Reddedildi'
+                        WHEN b.durum = 'eksik' THEN 'Eksik'
+                        WHEN b.durum = 'yuklendi' OR b.durum = 'beklemede' THEN 'Beklemede'
+                        ELSE 'Beklemede'
+                    END as status,
+                    b.dosya_yolu as url,
+                    b.id::text as belgeId,
+                    COALESCE(b.yonetici_notu, '') as adminNote
+                FROM belgeler b
+                LEFT JOIN belge_turleri bt ON b.belge_turu_id = bt.id
+                WHERE b.basvuru_id = $1 AND b.basvuru_tipi = 'urun_basvurusu'
+                ORDER BY COALESCE(bt.ad, b.ad, '')`,
+                [row.id]
+            );
+            documents.push(...belgelerResult.rows);
+
+            // Ürün resimleri (Ürün Fotoğrafı ve Ek Fotoğraf)
+            if (row.urun_id) {
+                const resimlerResult = await pool.query(
+                    `SELECT 
+                        CASE 
+                            WHEN ur.ana_resim = TRUE THEN 'Ürün Fotoğrafı'
+                            ELSE 'Ek Fotoğraf'
+                        END as name,
+                        'Beklemede' as status,
+                        ur.resim_url as url,
+                        ur.id::text as belgeId,
+                        '' as adminNote
+                    FROM urun_resimleri ur
+                    WHERE ur.urun_id = $1
+                    ORDER BY ur.sira_no`,
+                    [row.urun_id]
+                );
+                documents.push(...resimlerResult.rows);
+
+                // Ürün sertifikaları (Kalite Sertifikası)
+                const sertifikalarResult = await pool.query(
+                    `SELECT 
+                        COALESCE(st.ad, 'Kalite Sertifikası') as name,
+                        'Beklemede' as status,
+                        us.dosya_url as url,
+                        us.id::text as belgeId,
+                        '' as adminNote
+                    FROM urun_sertifikalari us
+                    LEFT JOIN sertifika_turleri st ON us.sertifika_turu_id = st.id
+                    WHERE us.urun_id = $1`,
+                    [row.urun_id]
+                );
+                documents.push(...sertifikalarResult.rows);
+            }
+
+            return {
+                ...row,
+                documents: documents
+            };
+        }));
+
+        // Durumları frontend formatına çevir
+        const formattedApplications = applications.map(row => {
+            let status = 'İncelemede';
+            if (row.durum === 'onaylandi') status = 'Onaylandı';
+            else if (row.durum === 'revizyon') status = 'Revizyon';
+            else if (row.durum === 'reddedildi') status = 'Reddedildi';
+            else if (row.durum === 'incelemede') status = 'İncelemede';
+
+            // Tarih formatla
+            const submittedAt = row.submittedAt ? new Date(row.submittedAt).toISOString().split('T')[0] : '';
+            const lastUpdate = row.lastUpdate ? formatRelativeTime(new Date(row.lastUpdate)) : '';
+
+            return {
+                id: row.id,
+                product: row.product,
+                category: row.category || 'Çiftlik Atıkları',
+                status: status,
+                submittedAt: submittedAt,
+                lastUpdate: lastUpdate,
+                adminNotes: row.adminNotes || row.red_nedeni || '',
+                documents: row.documents || []
+            };
+        });
+
+        res.json({
+            success: true,
+            applications: formattedApplications
+        });
+
+    } catch (error) {
+        console.error('❌ Get product applications hatası:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Başvurular alınamadı',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
 };
@@ -331,14 +921,17 @@ const updateProduct = async (req, res) => {
         //Ürünü güncelle
         const result = await pool.query(
             `UPDATE urunler 
-            SET baslik = COALESCE($1, baslik),
+            SET ad = COALESCE($1, ad),
+                baslik = COALESCE($1, baslik),
                 aciklama = COALESCE($2, aciklama),
+                mevcut_miktar = COALESCE($3, mevcut_miktar),
                 miktar = COALESCE($3, miktar),
                 birim = COALESCE($4, birim),
+                birim_fiyat = COALESCE($5, birim_fiyat),
                 fiyat = COALESCE($5, fiyat),
                 kategori = COALESCE($6, kategori),
                 durum = COALESCE($7, durum),
-                guncelleme_tarihi = CURRENT_TIMESTAMP
+                guncelleme = CURRENT_TIMESTAMP
             WHERE id = $8
             RETURNING *`,
             [title, desc, miktar, birim, price, category, durum, productId]
@@ -1766,6 +2359,8 @@ module.exports = {
     uploadMissingDocument,
     getGuncelBelgelerForFarmer,
     getSertifikaTurleri,
-    addSertifika
+    addSertifika,
+    addWasteProduct,
+    getMyProductApplications
 };
 

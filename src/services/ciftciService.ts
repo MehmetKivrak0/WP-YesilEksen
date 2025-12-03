@@ -282,6 +282,68 @@ export const ciftciService = {
             },
         });
         return response.data;
+    },
+
+    /**
+     * Atık/Ürün ekle (belgelerle birlikte)
+     */
+    addWasteProduct: async (productData: {
+        atikTuru: string;
+        miktar: number;
+        birim: string;
+        isAnalyzed: boolean;
+        hasGuarantee: boolean;
+        productPhoto?: File;
+        originDocument?: File;
+        analysisReport?: File;
+        guaranteeDocument?: File;
+        additionalPhoto?: File;
+        qualityCertificate?: File;
+    }): Promise<{ success: boolean; message: string; productId?: string }> => {
+        const formData = new FormData();
+        formData.append('atikTuru', productData.atikTuru);
+        formData.append('miktar', productData.miktar.toString());
+        formData.append('birim', productData.birim);
+        formData.append('isAnalyzed', productData.isAnalyzed.toString());
+        formData.append('hasGuarantee', productData.hasGuarantee.toString());
+
+        if (productData.productPhoto) formData.append('productPhoto', productData.productPhoto);
+        if (productData.originDocument) formData.append('originDocument', productData.originDocument);
+        if (productData.analysisReport) formData.append('analysisReport', productData.analysisReport);
+        if (productData.guaranteeDocument) formData.append('guaranteeDocument', productData.guaranteeDocument);
+        if (productData.additionalPhoto) formData.append('additionalPhoto', productData.additionalPhoto);
+        if (productData.qualityCertificate) formData.append('qualityCertificate', productData.qualityCertificate);
+
+        const response = await api.post('/ciftlik/atik-ekle', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            },
+        });
+        return response.data;
+    },
+
+    // Ürün başvuru durumlarını getir
+    getMyProductApplications: async (): Promise<{
+        success: boolean;
+        applications: Array<{
+            id: string;
+            product: string;
+            category: string;
+            status: 'Onaylandı' | 'İncelemede' | 'Revizyon' | 'Reddedildi';
+            submittedAt: string;
+            lastUpdate: string;
+            adminNotes: string;
+            documents: Array<{
+                name: string;
+                status: 'Onaylandı' | 'Eksik' | 'Beklemede' | 'Reddedildi';
+                url?: string;
+                belgeId?: string;
+                adminNote?: string;
+            }>;
+        }>;
+    }> => {
+        const response = await api.get('/ciftlik/urun-basvurulari');
+        return response.data;
     }
 };
 

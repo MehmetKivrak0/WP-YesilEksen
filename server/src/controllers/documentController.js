@@ -21,7 +21,31 @@ const getDocument = async (req, res) => {
         // Eğer wildcard route kullanıldıysa (filePath varsa), direkt dosya yolunu kullan
         if (filePath) {
             // Güvenlik: path traversal saldırılarını önle
-            const decodedPath = decodeURIComponent(filePath);
+            let decodedPath = decodeURIComponent(filePath);
+            
+            // Mutlak URL'den relative path çıkar
+            if (decodedPath.startsWith('http://') || decodedPath.startsWith('https://')) {
+                try {
+                    const urlObj = new URL(decodedPath);
+                    decodedPath = urlObj.pathname;
+                    // /uploads/ prefix'ini kaldır
+                    if (decodedPath.startsWith('/uploads/')) {
+                        decodedPath = decodedPath.substring('/uploads/'.length);
+                    } else if (decodedPath.startsWith('/')) {
+                        decodedPath = decodedPath.substring(1);
+                    }
+                } catch (e) {
+                    // URL parse edilemezse, /uploads/ içinde arıyoruz
+                    if (decodedPath.includes('/uploads/')) {
+                        decodedPath = decodedPath.split('/uploads/')[1];
+                    }
+                }
+            } else if (decodedPath.includes('/uploads/')) {
+                // Relative path içinde /uploads/ varsa, sonrasını al
+                decodedPath = decodedPath.split('/uploads/')[1];
+            }
+            
+            // Path'i normalize et ve güvenlik kontrolü yap
             const safePath = path.normalize(decodedPath).replace(/^(\.\.(\/|\\|$))+/, '');
             documentPath = path.join(__dirname, '../../uploads', safePath);
         } 
@@ -40,7 +64,22 @@ const getDocument = async (req, res) => {
                 });
             }
             
-            const relativePath = result.rows[0].dosya_yolu;
+            let relativePath = result.rows[0].dosya_yolu;
+            
+            // Mutlak URL'den relative path çıkar
+            if (relativePath && (relativePath.startsWith('http://') || relativePath.startsWith('https://'))) {
+                const urlObj = new URL(relativePath);
+                relativePath = urlObj.pathname;
+                // /uploads/ prefix'ini kaldır
+                if (relativePath.startsWith('/uploads/')) {
+                    relativePath = relativePath.substring('/uploads/'.length);
+                }
+            }
+            // Eğer path içinde /uploads/ varsa, sadece sonrasını al
+            if (relativePath && relativePath.includes('/uploads/')) {
+                relativePath = relativePath.split('/uploads/')[1];
+            }
+            
             documentPath = path.join(__dirname, '../../uploads', relativePath);
         } else {
             return res.status(400).json({
@@ -106,6 +145,12 @@ const getDocument = async (req, res) => {
             res.setHeader('Access-Control-Allow-Credentials', 'true');
         }
         res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+        
+        // PDF ve iframe için CSP header'ı ayarla (frame-ancestors)
+        if (ext === '.pdf') {
+            // PDF dosyaları için frame-ancestors'u ayarla
+            res.setHeader('Content-Security-Policy', "frame-ancestors 'self' http://localhost:5173 http://localhost:5174 " + (process.env.CLIENT_URL || ''));
+        }
         
         // İndirme mi yoksa görüntüleme mi?
         const download = req.query.download === 'true';

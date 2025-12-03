@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import CftNavbar from '../../components/cftnavbar';
+import { ciftciService } from '../../services/ciftciService';
 
 type DocumentStatus = 'Onaylandı' | 'Eksik' | 'Beklemede' | 'Reddedildi';
 
@@ -19,50 +20,7 @@ type ProductApplication = {
   }>;
 };
 
-// Örnek veri - gerçek uygulamada API'den gelecek
-const myProductApplications: ProductApplication[] = [
-  {
-    id: 'P-001',
-    product: 'Organik Kompost',
-    category: 'Toprak İyileştirici',
-    status: 'İncelemede',
-    submittedAt: '2024-02-12',
-    lastUpdate: '2 saat önce',
-    adminNotes: 'Analiz raporu bekleniyor. Laboratuvar sonuçlarını sisteme yükleyin.',
-    documents: [
-      { name: 'Ürün Fotoğrafı', status: 'Onaylandı', url: '/docs/kompost-foto.jpg' },
-      { name: 'Menşei Belgesi (ÇKS / İşletme Tescil)', status: 'Onaylandı', url: '/docs/cks-belgesi.pdf' },
-      { name: 'Laboratuvar Analiz Raporu', status: 'Beklemede', adminNote: 'Garanti İçerikli ürün - Laboratuvar sonuçları bekleniyor' },
-    ],
-  },
-  {
-    id: 'P-002',
-    product: 'Saman Balyası',
-    category: 'Hayvan Yemi',
-    status: 'Onaylandı',
-    submittedAt: '2024-02-08',
-    lastUpdate: 'Dün',
-    adminNotes: 'Tüm belgeler onaylandı. Ürününüz katalogda yayında.',
-    documents: [
-      { name: 'Ürün Fotoğrafı', status: 'Onaylandı', url: '/docs/saman-foto.jpg' },
-      { name: 'Menşei Belgesi (ÇKS / İşletme Tescil)', status: 'Onaylandı', url: '/docs/cks-belgesi.pdf' },
-    ],
-  },
-  {
-    id: 'P-003',
-    product: 'Hayvansal Gübre',
-    category: 'Organik Gübre',
-    status: 'Revizyon',
-    submittedAt: '2024-02-05',
-    lastUpdate: '3 gün önce',
-    adminNotes: 'Analiz raporu güncellenmeli.',
-    documents: [
-      { name: 'Ürün Fotoğrafı', status: 'Onaylandı', url: '/docs/gubre-foto.jpg' },
-      { name: 'Menşei Belgesi (ÇKS / İşletme Tescil)', status: 'Onaylandı', url: '/docs/cks-belgesi.pdf' },
-      { name: 'Laboratuvar Analiz Raporu', status: 'Reddedildi', adminNote: 'Belgede yer alan içerik değerleri güncel değil. 2024 tarihli analiz sonuçlarını yükleyiniz.' },
-    ],
-  },
-];
+// API'den veri çekilecek, örnek veri kaldırıldı
 
 const statusConfig = {
   'Onaylandı': { color: 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200', icon: 'check_circle' },
@@ -79,11 +37,55 @@ const documentStatusConfig = {
 };
 
 function UrunDurum() {
+  const [myProductApplications, setMyProductApplications] = useState<ProductApplication[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedApplication, setSelectedApplication] = useState<ProductApplication | null>(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<{ [key: string]: File | null }>({});
   const [updateMessage, setUpdateMessage] = useState('');
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [imageModalOpen, setImageModalOpen] = useState(false);
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
+  const [selectedImageName, setSelectedImageName] = useState<string>('');
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  // API'den veri çek
+  useEffect(() => {
+    const fetchApplications = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await ciftciService.getMyProductApplications();
+        if (response.success) {
+          setMyProductApplications(response.applications);
+        } else {
+          setError('Başvurular yüklenemedi');
+        }
+      } catch (err: any) {
+        console.error('Başvurular yükleme hatası:', err);
+        setError(err.response?.data?.message || 'Başvurular yüklenirken bir hata oluştu');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchApplications();
+  }, []);
+
+  // ESC tuşu ile resim modal'ını kapatma
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && imageModalOpen) {
+        setImageModalOpen(false);
+        setSelectedImageUrl(null);
+        setSelectedImageName('');
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [imageModalOpen]);
 
   return (
     <div className="font-display min-h-screen w-full bg-background-light dark:bg-background-dark text-content-light dark:text-content-dark flex flex-col">
@@ -98,35 +100,72 @@ function UrunDurum() {
             </p>
           </div>
 
+          {/* Loading State */}
+          {loading && (
+            <div className="flex items-center justify-center py-12">
+              <div className="flex flex-col items-center gap-4">
+                <span className="material-symbols-outlined text-4xl text-primary animate-spin">sync</span>
+                <p className="text-subtle-light dark:text-subtle-dark">Başvurular yükleniyor...</p>
+              </div>
+            </div>
+          )}
+
+          {/* Error State */}
+          {error && !loading && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-6 mb-8">
+              <div className="flex items-start gap-3">
+                <span className="material-symbols-outlined text-red-600 dark:text-red-400">error</span>
+                <div>
+                  <p className="text-sm font-medium text-red-800 dark:text-red-200 mb-1">Hata</p>
+                  <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Empty State */}
+          {!loading && !error && myProductApplications.length === 0 && (
+            <div className="bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-xl p-12 text-center">
+              <span className="material-symbols-outlined text-6xl text-subtle-light dark:text-subtle-dark mb-4">inventory_2</span>
+              <h3 className="text-xl font-semibold text-content-light dark:text-content-dark mb-2">Henüz başvuru yok</h3>
+              <p className="text-subtle-light dark:text-subtle-dark mb-6">
+                Ürün eklediğinizde başvurularınız burada görünecek
+              </p>
+            </div>
+          )}
+
           {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-            <div className="bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-xl p-6">
-              <p className="text-sm text-subtle-light dark:text-subtle-dark mb-1">Toplam Ürün</p>
-              <p className="text-3xl font-bold text-content-light dark:text-content-dark">{myProductApplications.length}</p>
+          {!loading && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+              <div className="bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-xl p-6">
+                <p className="text-sm text-subtle-light dark:text-subtle-dark mb-1">Toplam Ürün</p>
+                <p className="text-3xl font-bold text-content-light dark:text-content-dark">{myProductApplications.length}</p>
+              </div>
+              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-6">
+                <p className="text-sm text-green-700 dark:text-green-300 mb-1">Onaylanan</p>
+                <p className="text-3xl font-bold text-green-800 dark:text-green-200">
+                  {myProductApplications.filter(p => p.status === 'Onaylandı').length}
+                </p>
+              </div>
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-6">
+                <p className="text-sm text-yellow-700 dark:text-yellow-300 mb-1">İncelemede</p>
+                <p className="text-3xl font-bold text-yellow-800 dark:text-yellow-200">
+                  {myProductApplications.filter(p => p.status === 'İncelemede').length}
+                </p>
+              </div>
+              <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl p-6">
+                <p className="text-sm text-orange-700 dark:text-orange-300 mb-1">Revizyon</p>
+                <p className="text-3xl font-bold text-orange-800 dark:text-orange-200">
+                  {myProductApplications.filter(p => p.status === 'Revizyon').length}
+                </p>
+              </div>
             </div>
-            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-6">
-              <p className="text-sm text-green-700 dark:text-green-300 mb-1">Onaylanan</p>
-              <p className="text-3xl font-bold text-green-800 dark:text-green-200">
-                {myProductApplications.filter(p => p.status === 'Onaylandı').length}
-              </p>
-            </div>
-            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-6">
-              <p className="text-sm text-yellow-700 dark:text-yellow-300 mb-1">İncelemede</p>
-              <p className="text-3xl font-bold text-yellow-800 dark:text-yellow-200">
-                {myProductApplications.filter(p => p.status === 'İncelemede').length}
-              </p>
-            </div>
-            <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl p-6">
-              <p className="text-sm text-orange-700 dark:text-orange-300 mb-1">Revizyon</p>
-              <p className="text-3xl font-bold text-orange-800 dark:text-orange-200">
-                {myProductApplications.filter(p => p.status === 'Revizyon').length}
-              </p>
-            </div>
-          </div>
+          )}
 
           {/* Applications List */}
-          <div className="space-y-4">
-            {myProductApplications.map((application) => {
+          {!loading && !error && myProductApplications.length > 0 && (
+            <div className="space-y-4">
+              {myProductApplications.map((application) => {
               const config = statusConfig[application.status];
               return (
                 <div
@@ -189,7 +228,8 @@ function UrunDurum() {
                 </div>
               );
             })}
-          </div>
+            </div>
+          )}
         </div>
       </main>
 
@@ -256,16 +296,91 @@ function UrunDurum() {
                               {doc.status}
                             </span>
                           </div>
-                          {doc.url && doc.status === 'Onaylandı' && (
-                            <a
-                              href={doc.url}
-                              download
-                              className="inline-flex items-center gap-1 px-3 py-2 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors text-sm font-medium"
-                            >
-                              <span className="material-symbols-outlined text-base">download</span>
-                              İndir
-                            </a>
-                          )}
+                          {doc.url && (() => {
+                            // Belge URL'sini normalize et
+                            let documentUrl = doc.url;
+                            const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+                            // Base URL'den /api kısmını temizle (eğer varsa)
+                            const cleanBaseUrl = baseUrl.endsWith('/api') ? baseUrl.substring(0, baseUrl.length - 4) : baseUrl.replace(/\/api$/, '');
+                            
+                            // Mutlak URL ise, relative path'e çevir
+                            if (documentUrl.startsWith('http://') || documentUrl.startsWith('https://')) {
+                              try {
+                                const urlObj = new URL(documentUrl);
+                                // /uploads/ kısmından sonrasını al
+                                if (urlObj.pathname.includes('/uploads/')) {
+                                  const relativePath = urlObj.pathname.split('/uploads/')[1];
+                                  documentUrl = `${cleanBaseUrl}/api/documents/file/${encodeURIComponent(relativePath)}`;
+                                } else {
+                                  // Eğer /uploads/ yoksa, direkt path'i kullan
+                                  const pathWithoutSlash = urlObj.pathname.startsWith('/') ? urlObj.pathname.substring(1) : urlObj.pathname;
+                                  documentUrl = `${cleanBaseUrl}/api/documents/file/${encodeURIComponent(pathWithoutSlash)}`;
+                                }
+                              } catch (e) {
+                                console.error('URL parse hatası:', e, 'Orijinal URL:', documentUrl);
+                                // URL parse edilemezse, eski formatı kullan
+                                if (documentUrl.includes('/uploads/')) {
+                                  const relativePath = documentUrl.split('/uploads/')[1];
+                                  documentUrl = `${cleanBaseUrl}/api/documents/file/${encodeURIComponent(relativePath)}`;
+                                } else {
+                                  // Eğer /uploads/ yoksa, direkt URL'i kullan
+                                  documentUrl = documentUrl;
+                                }
+                              }
+                            } else {
+                              // Relative path ise, /api/documents/file/ endpoint'ini kullan
+                              // Eski formatları destekle (ciftlik/... veya farmer/...)
+                              const cleanPath = documentUrl.startsWith('/') ? documentUrl.substring(1) : documentUrl;
+                              documentUrl = `${cleanBaseUrl}/api/documents/file/${encodeURIComponent(cleanPath)}`;
+                            }
+                            
+                            // Belge türüne göre ikon ve buton metni
+                            const isImage = doc.url.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+                            const isPdf = doc.url.match(/\.pdf$/i);
+                            
+                            // Tüm belgeler için pop-up açma fonksiyonu
+                            const handleDocumentClick = async (e: React.MouseEvent) => {
+                              e.preventDefault();
+                              setSelectedImageUrl(documentUrl);
+                              setSelectedImageName(doc.name);
+                              
+                              // PDF ise blob olarak yükle (CSP sorununu çözmek için)
+                              if (isPdf) {
+                                setPdfLoading(true);
+                                setPdfBlobUrl(null);
+                                try {
+                                  const response = await fetch(documentUrl);
+                                  if (response.ok) {
+                                    const blob = await response.blob();
+                                    const blobUrl = URL.createObjectURL(blob);
+                                    setPdfBlobUrl(blobUrl);
+                                  } else {
+                                    console.error('PDF yüklenemedi:', response.status, response.statusText);
+                                  }
+                                } catch (error) {
+                                  console.error('PDF yükleme hatası:', error);
+                                } finally {
+                                  setPdfLoading(false);
+                                }
+                              } else {
+                                setPdfBlobUrl(null);
+                              }
+                              
+                              setImageModalOpen(true);
+                            };
+                            
+                            return (
+                              <button
+                                onClick={handleDocumentClick}
+                                className="inline-flex items-center gap-1 px-3 py-2 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors text-sm font-medium cursor-pointer"
+                              >
+                                <span className="material-symbols-outlined text-base">
+                                  {isImage ? 'image' : isPdf ? 'picture_as_pdf' : 'description'}
+                                </span>
+                                {isImage ? 'Görüntüle' : isPdf ? 'PDF Görüntüle' : 'Görüntüle'}
+                              </button>
+                            );
+                          })()}
                         </div>
                         {doc.adminNote && (
                           <div className={`mt-3 p-3 rounded-lg ${
@@ -507,6 +622,213 @@ function UrunDurum() {
           </div>
         </div>
       )}
+
+      {/* Belge Görüntüleme Modal - Tüm belge türleri için */}
+      {imageModalOpen && selectedImageUrl && (() => {
+        // Orijinal belge URL'sinden belge türünü belirle (normalize edilmiş URL'den değil)
+        const originalDoc = selectedApplication?.documents.find(d => d.name === selectedImageName);
+        const originalUrl = originalDoc?.url || selectedImageUrl;
+        const isImage = originalUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+        const isPdf = originalUrl.match(/\.pdf$/i);
+        const isDocument = !isImage && !isPdf;
+        
+        return (
+          <div
+            className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setImageModalOpen(false);
+                setSelectedImageUrl(null);
+                setSelectedImageName('');
+                // PDF blob URL'ini temizle
+                if (pdfBlobUrl) {
+                  URL.revokeObjectURL(pdfBlobUrl);
+                  setPdfBlobUrl(null);
+                }
+              }
+            }}
+          >
+            <div className="relative w-full max-w-6xl max-h-[90vh] bg-background-light dark:bg-background-dark rounded-xl border border-border-light dark:border-border-dark shadow-2xl flex flex-col">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-4 border-b border-border-light dark:border-border-dark">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 dark:bg-primary/20 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-primary">
+                      {isImage ? 'image' : isPdf ? 'picture_as_pdf' : 'description'}
+                    </span>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-content-light dark:text-content-dark">
+                      {selectedImageName}
+                    </h3>
+                    <p className="text-xs text-subtle-light dark:text-subtle-dark">
+                      {isImage ? 'Resim Görüntüleme' : isPdf ? 'PDF Görüntüleme' : 'Belge Görüntüleme'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setImageModalOpen(false);
+                    setSelectedImageUrl(null);
+                    setSelectedImageName('');
+                  }}
+                  className="p-2 rounded-lg hover:bg-primary/10 dark:hover:bg-primary/20 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-content-light dark:text-content-dark">close</span>
+                </button>
+              </div>
+
+              {/* Modal Content - Belge türüne göre görüntüleme */}
+              <div className="flex-1 overflow-auto p-6 flex items-center justify-center">
+                {isImage ? (
+                  // Resim görüntüleme
+                  <img
+                    src={selectedImageUrl}
+                    alt={selectedImageName}
+                    className="max-w-full max-h-[calc(90vh-120px)] object-contain rounded-lg shadow-lg"
+                    onError={(e) => {
+                      const errorDetails = {
+                        belgeAdi: selectedImageName,
+                        belgeUrl: selectedImageUrl,
+                        belgeTuru: 'Resim',
+                        hataTipi: 'Yükleme Hatası',
+                        olasıNedenler: [
+                          'Dosya sunucuda bulunamadı',
+                          'URL formatı hatalı olabilir',
+                          'CORS hatası olabilir',
+                          'Dosya yolu yanlış olabilir'
+                        ],
+                        kontrolEdilecekler: [
+                          `URL: ${selectedImageUrl}`,
+                          `Backend endpoint: /api/documents/file/`,
+                          `Fiziksel dosya yolu kontrol edilmeli`
+                        ]
+                      };
+                      console.error('❌ Resim Yükleme Hatası:', errorDetails);
+                      console.error('📋 Detaylı Hata Bilgisi:', {
+                        orijinalUrl: doc?.url || 'Bilinmiyor',
+                        normalizeEdilmisUrl: selectedImageUrl,
+                        belgeAdi: selectedImageName,
+                        timestamp: new Date().toISOString()
+                      });
+                      e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect fill="%23fee2e2" width="400" height="300"/%3E%3Ctext fill="%23dc2626" font-family="sans-serif" font-size="16" font-weight="bold" x="50%25" y="40%25" text-anchor="middle"%3EResim Yüklenemedi%3C/text%3E%3Ctext fill="%23991b1b" font-family="sans-serif" font-size="12" x="50%25" y="55%25" text-anchor="middle"%3E' + encodeURIComponent(selectedImageName) + '%3C/text%3E%3Ctext fill="%23991b1b" font-family="sans-serif" font-size="10" x="50%25" y="70%25" text-anchor="middle"%3EKonsolu kontrol edin%3C/text%3E%3C/svg%3E';
+                    }}
+                  />
+                ) : isPdf ? (
+                  // PDF görüntüleme - blob URL kullan (CSP sorununu çözer)
+                  <div className="w-full h-[calc(90vh-120px)] rounded-lg shadow-lg border border-border-light dark:border-border-dark overflow-hidden bg-background-light dark:bg-background-dark">
+                    {pdfLoading ? (
+                      <div className="flex flex-col items-center justify-center h-full gap-4">
+                        <span className="material-symbols-outlined text-6xl text-primary animate-spin">sync</span>
+                        <p className="text-content-light dark:text-content-dark font-medium">PDF yükleniyor...</p>
+                      </div>
+                    ) : pdfBlobUrl ? (
+                      <iframe
+                        src={`${pdfBlobUrl}#toolbar=1&navpanes=1&scrollbar=1`}
+                        className="w-full h-full border-0"
+                        title={selectedImageName}
+                      />
+                    ) : (
+                      // PDF yüklenemezse fallback
+                      <div className="flex flex-col items-center justify-center h-full gap-4 p-8">
+                        <div className="w-24 h-24 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
+                          <span className="material-symbols-outlined text-5xl text-red-600 dark:text-red-400">error</span>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-lg font-semibold text-content-light dark:text-content-dark mb-2">
+                            PDF Yüklenemedi
+                          </p>
+                          <p className="text-sm text-subtle-light dark:text-subtle-dark mb-4">
+                            PDF dosyası tarayıcıda görüntülenemedi. Lütfen konsolu kontrol edin veya dosyayı indirin.
+                          </p>
+                          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                            <a
+                              href={selectedImageUrl}
+                              download
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors font-medium"
+                            >
+                              <span className="material-symbols-outlined text-xl">download</span>
+                              PDF'yi İndir
+                            </a>
+                            <a
+                              href={selectedImageUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-2 px-6 py-3 bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark text-content-light dark:text-content-dark rounded-lg hover:bg-primary/10 transition-colors font-medium"
+                            >
+                              <span className="material-symbols-outlined text-xl">open_in_new</span>
+                              Yeni Sekmede Aç
+                            </a>
+                          </div>
+                        </div>
+                        <div className="mt-4 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg max-w-md">
+                          <p className="text-xs text-amber-800 dark:text-amber-200 mb-2 font-semibold">Hata Detayları:</p>
+                          <p className="text-xs text-amber-700 dark:text-amber-300">
+                            URL: <span className="font-mono break-all">{selectedImageUrl}</span>
+                          </p>
+                          <p className="text-xs text-amber-700 dark:text-amber-300 mt-2">
+                            Konsolu kontrol edin (F12) daha fazla bilgi için.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  // Diğer belgeler için iframe veya indirme linki
+                  <div className="flex flex-col items-center justify-center gap-4 p-8">
+                    <div className="w-24 h-24 rounded-full bg-primary/10 dark:bg-primary/20 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-5xl text-primary">description</span>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg font-semibold text-content-light dark:text-content-dark mb-2">
+                        {selectedImageName}
+                      </p>
+                      <p className="text-sm text-subtle-light dark:text-subtle-dark mb-4">
+                        Bu belge türü tarayıcıda görüntülenemiyor
+                      </p>
+                      <a
+                        href={selectedImageUrl}
+                        download
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors font-medium"
+                      >
+                        <span className="material-symbols-outlined text-xl">download</span>
+                        Belgeyi İndir
+                      </a>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 border-t border-border-light dark:border-border-dark bg-background-light/50 dark:bg-background-dark/50">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-subtle-light dark:text-subtle-dark">
+                    {isImage 
+                      ? 'Resmi büyütmek için tıklayın veya ESC tuşuna basarak kapatın'
+                      : isPdf
+                      ? 'PDF\'yi görüntülemek için yukarıdaki alanı kullanın veya ESC tuşuna basarak kapatın'
+                      : 'Belgeyi indirmek için butona tıklayın veya ESC tuşuna basarak kapatın'}
+                  </p>
+                  <a
+                    href={selectedImageUrl}
+                    download={!isPdf}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors text-sm font-medium"
+                  >
+                    <span className="material-symbols-outlined text-base">download</span>
+                    İndir
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
