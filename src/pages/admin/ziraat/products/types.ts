@@ -1,4 +1,4 @@
-export type DocumentStatus = 'Onaylandı' | 'Eksik' | 'Beklemede' | 'Reddedildi';
+export type DocumentStatus = 'Onaylandı' | 'Eksik' | 'Beklemede' | 'Reddedildi' | 'Güncel Belge';
 
 export type ProductStatus = 'Onaylandı' | 'İncelemede' | 'Revizyon';
 

@@ -379,6 +379,7 @@ const getProductApplications = async (req, res) => {
                         WHEN b.durum = 'onaylandi' THEN 'Onaylandı'
                         WHEN b.durum = 'reddedildi' THEN 'Reddedildi'
                         WHEN b.durum = 'eksik' THEN 'Eksik'
+                        WHEN b.durum = 'gcbelge' THEN 'Güncel Belge'
                         ELSE 'Beklemede'
                     END as status,
                     b.dosya_yolu as url,

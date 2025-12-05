@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import ZrtnNavbar from '../../../../components/zrtnavbar';
 import { ziraatService } from '../../../../services/ziraatService';
 import { useToast } from '../../../../context/ToastContext';
+import { useNotifications } from '../../../../context/NotificationContext';
 
-type DocumentStatus = 'Onaylandı' | 'Eksik' | 'Beklemede' | 'Reddedildi';
+type DocumentStatus = 'Onaylandı' | 'Eksik' | 'Beklemede' | 'Reddedildi' | 'Güncel Belge';
 
 type ProductApplication = {
   id: string;
@@ -66,6 +68,17 @@ const statusColors: Record<string, string> = {
 
 function ProductApplicationsPage() {
   const toast = useToast();
+  const navigate = useNavigate();
+  const { 
+    notifications, 
+    unreadCount, 
+    loading: notificationsLoading, 
+    markAsRead, 
+    deleteNotification, 
+    deleteAllNotifications, 
+    refreshNotifications 
+  } = useNotifications();
+  const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<'Hepsi' | keyof typeof statusColors>('İncelemede');
   const [applications, setApplications] = useState<ProductApplication[]>([]);
   const [loading, setLoading] = useState(true);
@@ -431,6 +444,125 @@ function ProductApplicationsPage() {
                 <option value="Onaylandı">Onaylandı</option>
                 <option value="Revizyon">Revizyon</option>
               </select>
+              
+              {/* Bildirim Butonu */}
+              <div
+                className="relative"
+                onMouseEnter={() => setIsNotificationMenuOpen(true)}
+                onMouseLeave={() => setIsNotificationMenuOpen(false)}
+              >
+                <button
+                  className="p-2 rounded-full bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark hover:bg-primary/10 dark:hover:bg-primary/20 transition-colors relative"
+                  type="button"
+                  onClick={() => {
+                    setIsNotificationMenuOpen((prev) => {
+                      if (!prev) {
+                        refreshNotifications();
+                      }
+                      return !prev;
+                    });
+                  }}
+                >
+                  <span className="material-symbols-outlined text-content-light dark:text-content-dark">notifications</span>
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full"></span>
+                  )}
+                </button>
+                {isNotificationMenuOpen && (
+                  <div
+                    className="absolute right-0 top-full pt-1 z-[100] w-80"
+                    onMouseEnter={() => setIsNotificationMenuOpen(true)}
+                    onMouseLeave={() => setIsNotificationMenuOpen(false)}
+                  >
+                    <div className="rounded-lg border border-border-light dark:border-border-dark bg-background-light dark:bg-background-dark shadow-lg pointer-events-auto max-h-96 overflow-y-auto">
+                      <div className="px-4 py-3 border-b border-border-light dark:border-border-dark sticky top-0 bg-background-light dark:bg-background-dark">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-sm font-semibold text-content-light dark:text-content-dark">Bildirimler</h3>
+                          {unreadCount > 0 && (
+                            <span className="px-2 py-0.5 rounded-full bg-primary/20 dark:bg-primary/30 text-primary text-xs font-medium">
+                              {unreadCount} yeni
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="py-2">
+                        {notificationsLoading ? (
+                          <div className="px-4 py-8 text-center">
+                            <span className="material-symbols-outlined text-subtle-light dark:text-subtle-dark text-4xl mb-2 block animate-spin">sync</span>
+                            <p className="text-sm text-subtle-light dark:text-subtle-dark">Bildirimler yükleniyor...</p>
+                          </div>
+                        ) : notifications.length > 0 ? (
+                          notifications.map((bildirim) => (
+                            <div
+                              key={bildirim.id}
+                              className={`px-4 py-3 border-b transition-colors ${
+                                !bildirim.okundu 
+                                  ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-700/50 border-l-4 border-l-amber-500 dark:border-l-amber-400' 
+                                  : 'border-border-light/50 dark:border-border-dark/50'
+                              }`}
+                            >
+                              <div className="flex items-start gap-3">
+                                <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${
+                                  !bildirim.okundu ? 'bg-amber-500 dark:bg-amber-400 animate-pulse' : 'bg-transparent'
+                                }`}></div>
+                                <div className="flex-1 min-w-0">
+                                  <p className={`text-sm font-medium mb-0.5 ${
+                                    !bildirim.okundu 
+                                      ? 'text-amber-900 dark:text-amber-100 font-bold' 
+                                      : 'text-content-light dark:text-content-dark'
+                                  }`}>
+                                    {bildirim.baslik}
+                                  </p>
+                                  <p className={`text-xs line-clamp-2 ${
+                                    !bildirim.okundu 
+                                      ? 'text-amber-800 dark:text-amber-200' 
+                                      : 'text-subtle-light dark:text-subtle-dark'
+                                  }`}>
+                                    {bildirim.mesaj}
+                                  </p>
+                                  <p className="text-xs text-subtle-light dark:text-subtle-dark mt-1">
+                                    {new Date(bildirim.tarih).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={async () => {
+                                    await deleteNotification(bildirim.id);
+                                  }}
+                                  className="p-1 hover:bg-primary/10 dark:hover:bg-primary/20 rounded transition-colors flex-shrink-0"
+                                  type="button"
+                                  title="Sil"
+                                >
+                                  <span className="material-symbols-outlined text-subtle-light dark:text-subtle-dark text-base">close</span>
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="px-4 py-8 text-center">
+                            <span className="material-symbols-outlined text-subtle-light dark:text-subtle-dark text-4xl mb-2 block">notifications_none</span>
+                            <p className="text-sm text-subtle-light dark:text-subtle-dark">Bildirim yok</p>
+                          </div>
+                        )}
+                      </div>
+                      {notifications.length > 0 && (
+                        <div className="px-4 py-3 border-t border-border-light dark:border-border-dark">
+                          <button
+                            onClick={async () => {
+                              await deleteAllNotifications();
+                              setIsNotificationMenuOpen(false);
+                              toast.success('Tüm bildirimler temizlendi');
+                            }}
+                            className="w-full text-sm text-primary hover:text-primary/80 transition-colors"
+                            type="button"
+                          >
+                            Tümünü Temizle
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -692,7 +824,9 @@ function ProductApplicationsPage() {
                           ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-300 dark:border-red-700'
                           : review.status === 'Reddedildi'
                             ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-300 dark:border-red-700'
-                            : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700';
+                            : review.status === 'Güncel Belge'
+                              ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700'
+                              : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700';
 
                     return (
                       <div
@@ -726,6 +860,7 @@ function ProductApplicationsPage() {
                             {review.status === 'Onaylandı' && <span className="material-symbols-outlined text-xs">check_circle</span>}
                             {review.status === 'Reddedildi' && <span className="material-symbols-outlined text-xs">cancel</span>}
                             {review.status === 'Eksik' && <span className="material-symbols-outlined text-xs">error</span>}
+                            {review.status === 'Güncel Belge' && <span className="material-symbols-outlined text-xs">update</span>}
                             {review.status === 'Beklemede' && <span className="material-symbols-outlined text-xs">schedule</span>}
                             <span className="hidden sm:inline">{review.status}</span>
                             <span className="sm:hidden">{review.status.length > 8 ? review.status.substring(0, 8) + '...' : review.status}</span>

@@ -1,6 +1,7 @@
 const { pool } = require('../config/database');
 const path = require('path');
 const fs = require('fs');
+const { createNotification } = require('../utils/notificationHelper');
 
 //Çiftlik Panel İstatistikleri kısmı
 
@@ -794,6 +795,7 @@ const getMyProductApplications = async (req, res) => {
                         WHEN b.durum = 'onaylandi' THEN 'Onaylandı'
                         WHEN b.durum = 'reddedildi' THEN 'Reddedildi'
                         WHEN b.durum = 'eksik' THEN 'Eksik'
+                        WHEN b.durum = 'gcbelge' THEN 'Güncel Belge'
                         WHEN b.durum = 'yuklendi' OR b.durum = 'beklemede' THEN 'Beklemede'
                         ELSE 'Beklemede'
                     END as status,
@@ -2180,16 +2182,18 @@ const uploadMissingDocument = async (req, res) => {
         }
 
         // Ürün başvurusu için - çiftçi belge gönderdiğinde durumu "incelemede" yap (eksik belge kontrolünden bağımsız)
+        let urunBasvuruBilgi = null;
         if (belge.basvuru_tipi === 'urun_basvurusu') {
             console.log(`🔍 [UPLOAD MISSING DOC] Ürün başvurusu kontrolü başlatılıyor - Basvuru ID: ${belge.basvuru_id}`);
             
             const mevcutDurumResult = await client.query(
-                `SELECT durum FROM urun_basvurulari WHERE id = $1::uuid`,
+                `SELECT durum, urun_adi, inceleyen_id FROM urun_basvurulari WHERE id = $1::uuid`,
                 [belge.basvuru_id]
             );
             
             if (mevcutDurumResult.rows.length > 0) {
-                const mevcutDurum = mevcutDurumResult.rows[0].durum;
+                urunBasvuruBilgi = mevcutDurumResult.rows[0];
+                const mevcutDurum = urunBasvuruBilgi.durum;
                 console.log(`🔍 [UPLOAD MISSING DOC] Mevcut ürün başvurusu durumu: '${mevcutDurum}' - Basvuru ID: ${belge.basvuru_id}`);
                 
                 // Eğer durum "revizyon" ise "incelemede" yap (çiftçi belge gönderdiğinde)
@@ -2223,6 +2227,48 @@ const uploadMissingDocument = async (req, res) => {
         }
 
         await client.query('COMMIT');
+        
+        // Bildirim gönder - Ürün başvurusu için admin'e bildirim gönder
+        if (belge.basvuru_tipi === 'urun_basvurusu' && urunBasvuruBilgi) {
+            try {
+                // Ürün başvurusunu inceleyen admin'i bul
+                let adminId = urunBasvuruBilgi.inceleyen_id;
+                
+                // Eğer inceleyen admin yoksa, tüm ziraat yöneticilerine bildirim gönder
+                if (!adminId) {
+                    console.log(`ℹ️ [UPLOAD MISSING DOC] İnceleyen admin bulunamadı, tüm ziraat yöneticilerine bildirim gönderilecek`);
+                    const adminlerResult = await pool.query(
+                        `SELECT id FROM kullanicilar WHERE rol = 'ziraat_yoneticisi' AND silinme IS NULL`
+                    );
+                    
+                    if (adminlerResult.rows.length > 0) {
+                        // Tüm adminlere bildirim gönder
+                        for (const admin of adminlerResult.rows) {
+                            await createNotification({
+                                kullanici_id: admin.id,
+                                bildirim_tipi_kod: 'BELGE',
+                                baslik: 'Yeni Belge Yüklendi',
+                                mesaj: `"${urunBasvuruBilgi.urun_adi}" adlı ürün başvurusu için eksik belge yüklendi. Lütfen inceleyin.`,
+                                link: `/admin/ziraat/products`
+                            });
+                        }
+                        console.log(`✅ [UPLOAD MISSING DOC] Tüm ziraat yöneticilerine bildirim gönderildi (${adminlerResult.rows.length} admin)`);
+                    }
+                } else {
+                    // Sadece inceleyen admin'e bildirim gönder
+                    await createNotification({
+                        kullanici_id: adminId,
+                        bildirim_tipi_kod: 'BELGE',
+                        baslik: 'Yeni Belge Yüklendi',
+                        mesaj: `"${urunBasvuruBilgi.urun_adi}" adlı ürün başvurusu için eksik belge yüklendi. Lütfen inceleyin.`,
+                        link: `/admin/ziraat/products`
+                    });
+                    console.log(`✅ [UPLOAD MISSING DOC] İnceleyen admin'e bildirim gönderildi (Admin ID: ${adminId})`);
+                }
+            } catch (notificationError) {
+                console.error('⚠️ [UPLOAD MISSING DOC] Bildirim oluşturma hatası (işlem başarılı):', notificationError);
+            }
+        }
 
         res.json({
             success: true,

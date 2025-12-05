@@ -4,7 +4,7 @@ import CftNavbar from '../../components/cftnavbar';
 import { ciftciService } from '../../services/ciftciService';
 import { useToast } from '../../context/ToastContext';
 
-type DocumentStatus = 'Onaylandı' | 'Eksik' | 'Beklemede' | 'Reddedildi';
+type DocumentStatus = 'Onaylandı' | 'Eksik' | 'Beklemede' | 'Reddedildi' | 'Güncel Belge';
 
 type ProductApplication = {
   id: string;
@@ -37,6 +37,7 @@ const documentStatusConfig = {
   'Beklemede': { color: 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200', icon: 'pending' },
   'Eksik': { color: 'bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-200', icon: 'warning' },
   'Reddedildi': { color: 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200', icon: 'cancel' },
+  'Güncel Belge': { color: 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200', icon: 'update' },
 };
 
 function UrunDurum() {
