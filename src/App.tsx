@@ -1,5 +1,8 @@
 import './App.css'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { ToastProvider } from './context/ToastContext'
+import { NotificationProvider } from './context/NotificationContext'
+import ToastContainer from './components/ToastContainer'
 import Anasayfa from './pages/Anasayfa.tsx'
 import Giris from './pages/auth/giris.tsx'
 import Kayit from './pages/auth/kayit.tsx'
@@ -38,45 +41,50 @@ import PrivacyPolicy from './pages/PrivacyPolicy.tsx'
 
 function App() {
   return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<Anasayfa />} />
-        <Route path="/giris" element={<Giris />} />
-        <Route path="/kayit" element={<Kayit />} />
-        <Route path="/sifremi-unuttum" element={<SifremiUnuttum />} />
-        <Route path="/iamgroot" element={<IamGroot />} />
-        <Route path="/privacy" element={<PrivacyPolicy />} />
-        <Route path="/admin/atik" element={<WasteManagementPage />} />
-        <Route path="/admin/ziraat" element={<DashboardPage />} />
-        <Route path="/admin/ziraat/urun-onay" element={<ProductApplicationsPage />} />
-        <Route path="/admin/ziraat/ciftlik-onay" element={<FarmApplicationsPage />} />
-        <Route path="/admin/ziraat/ciftlik-detay/:farmerId" element={<FarmDetailPage />} />
-        <Route path="/admin/ziraat/raporlar/genel" element={<GeneralReportPage />} />
-        <Route path="/admin/ziraat/raporlar/sdg" element={<SDGReportPage />} />
-        <Route path="/admin/sanayi" element={<SanayiIdsahPage />} />
-        <Route path="/admin/sanayi/firma-onaylari" element={<FirmaOnaylariPage />} />
-        <Route path="/admin/sanayi/uye-sirketler" element={<UyeSirketlerPage />} />
-        <Route path="/admin/sanayi/raporlar/genel" element={<SanayiGeneralReportPage />} />
-        <Route path="/admin/sanayi/raporlar/sdg" element={<SanayiSDGReportPage />} />
-        <Route path="/ciftlikler" element={<Ciftlikler />} />
-        <Route path="/ciftlik/detay/:id" element={<CiftlikDetay />} />
-        <Route path="/ciftlik/panel" element={<CiftciPanel />} />
-        <Route path="/ciftlik/urunlerim" element={<Urunlerim />} />
-        <Route path="/ciftlik/urun-durum" element={<UrunDurum />} />
-        <Route path="/ciftlik/satis-gecmisi" element={<CiftciSatisGecmisi />} />
-        <Route path="/ciftlik/profil" element={<CiftlikProfil />} />
-        <Route path="/admin/ziraat/ciftlik" element={<FarmListPage />} />
-        <Route path="/firmalar" element={<Firmalar />} />
-        <Route path="/firma/detay/:id" element={<FirmaDetay />} />
-        <Route path="/firma/satis-gecmisi" element={<FirmaSatisGecmisi />} />
-        <Route path="/firma/ekle" element={<FirmaEkle />} />
-        <Route path="/firma/panel" element={<FirmaPanel />} />
-        <Route path="/firma/basvuru-durum" element={<FirmaBasvuruDurum />} />
-        <Route path="/firma/profil" element={<FirmaProfil />} />
-        <Route path="/atiklar" element={<Atiklar />} />
-        <Route path="/atiklar/ekle" element={<AtikEkle />} />
-      </Routes>
-    </Router>
+    <ToastProvider>
+      <NotificationProvider>
+        <Router>
+          <Routes>
+          <Route path="/" element={<Anasayfa />} />
+          <Route path="/giris" element={<Giris />} />
+          <Route path="/kayit" element={<Kayit />} />
+          <Route path="/sifremi-unuttum" element={<SifremiUnuttum />} />
+          <Route path="/iamgroot" element={<IamGroot />} />
+          <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/admin/atik" element={<WasteManagementPage />} />
+          <Route path="/admin/ziraat" element={<DashboardPage />} />
+          <Route path="/admin/ziraat/urun-onay" element={<ProductApplicationsPage />} />
+          <Route path="/admin/ziraat/ciftlik-onay" element={<FarmApplicationsPage />} />
+          <Route path="/admin/ziraat/ciftlik-detay/:farmerId" element={<FarmDetailPage />} />
+          <Route path="/admin/ziraat/raporlar/genel" element={<GeneralReportPage />} />
+          <Route path="/admin/ziraat/raporlar/sdg" element={<SDGReportPage />} />
+          <Route path="/admin/sanayi" element={<SanayiIdsahPage />} />
+          <Route path="/admin/sanayi/firma-onaylari" element={<FirmaOnaylariPage />} />
+          <Route path="/admin/sanayi/uye-sirketler" element={<UyeSirketlerPage />} />
+          <Route path="/admin/sanayi/raporlar/genel" element={<SanayiGeneralReportPage />} />
+          <Route path="/admin/sanayi/raporlar/sdg" element={<SanayiSDGReportPage />} />
+          <Route path="/ciftlikler" element={<Ciftlikler />} />
+          <Route path="/ciftlik/detay/:id" element={<CiftlikDetay />} />
+          <Route path="/ciftlik/panel" element={<CiftciPanel />} />
+          <Route path="/ciftlik/urunlerim" element={<Urunlerim />} />
+          <Route path="/ciftlik/urun-durum" element={<UrunDurum />} />
+          <Route path="/ciftlik/satis-gecmisi" element={<CiftciSatisGecmisi />} />
+          <Route path="/ciftlik/profil" element={<CiftlikProfil />} />
+          <Route path="/admin/ziraat/ciftlik" element={<FarmListPage />} />
+          <Route path="/firmalar" element={<Firmalar />} />
+          <Route path="/firma/detay/:id" element={<FirmaDetay />} />
+          <Route path="/firma/satis-gecmisi" element={<FirmaSatisGecmisi />} />
+          <Route path="/firma/ekle" element={<FirmaEkle />} />
+          <Route path="/firma/panel" element={<FirmaPanel />} />
+          <Route path="/firma/basvuru-durum" element={<FirmaBasvuruDurum />} />
+          <Route path="/firma/profil" element={<FirmaProfil />} />
+          <Route path="/atiklar" element={<Atiklar />} />
+          <Route path="/atiklar/ekle" element={<AtikEkle />} />
+        </Routes>
+        <ToastContainer />
+        </Router>
+      </NotificationProvider>
+    </ToastProvider>
   )
 }
 

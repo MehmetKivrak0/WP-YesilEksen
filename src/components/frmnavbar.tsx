@@ -1,8 +1,19 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { firmaService } from '../services/firmaService';
+import { useNotifications } from '../context/NotificationContext';
+import { useToast } from '../context/ToastContext';
 
 function FrmNavbar() {
+  const { 
+    notifications: bildirimler, 
+    unreadCount: okunmamisSayisi,
+    loading: notificationsLoading,
+    markAsRead,
+    deleteNotification,
+    deleteAllNotifications
+  } = useNotifications();
+  const toast = useToast();
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false);
   const navigate = useNavigate();
@@ -45,45 +56,35 @@ function FrmNavbar() {
     loadFirmaBilgileri();
   }, []);
 
-  // Bildirimler - gerçek uygulamada API'den gelecek
-  const [bildirimler, setBildirimler] = useState([
-    {
-      id: 1,
-      baslik: 'Yeni Ürün Eklendi',
-      mesaj: 'Mısır Sapı ürünü kataloğa eklendi',
-      tarih: '2 saat önce',
-      okundu: false,
-      tip: 'urun'
-    },
-    {
-      id: 2,
-      baslik: 'Sipariş Onaylandı',
-      mesaj: 'Satın alma talebiniz onaylandı',
-      tarih: '5 saat önce',
-      okundu: false,
-      tip: 'siparis'
-    },
-    {
-      id: 3,
-      baslik: 'Yeni Çiftlik Eklendi',
-      mesaj: 'Toros Çiftliği platforma katıldı',
-      tarih: '1 gün önce',
-      okundu: true,
-      tip: 'ciftlik'
+  // Bildirim tıklandığında okundu işaretle
+  const handleBildirimClick = async (bildirim: any) => {
+    if (!bildirim.okundu) {
+      await markAsRead(bildirim.id);
     }
-  ]);
-
-  const okunmamisSayisi = bildirimler.filter(b => !b.okundu).length;
-
-  const handleTumunuTemizle = () => {
-    // Gerçek uygulamada API çağrısı yapılacak
-    setBildirimler([]);
-    setIsNotificationMenuOpen(false);
+    
+    // Eğer link varsa, o sayfaya git
+    if (bildirim.link) {
+      navigate(bildirim.link);
+      setIsNotificationMenuOpen(false);
+    }
   };
 
-  const handleBildirimSil = (id: number) => {
-    // Gerçek uygulamada API çağrısı yapılacak
-    setBildirimler(prev => prev.filter(b => b.id !== id));
+  const handleTumunuTemizle = async () => {
+    try {
+      await deleteAllNotifications();
+      setIsNotificationMenuOpen(false);
+      toast.success('Tüm bildirimler temizlendi');
+    } catch (error) {
+      toast.error('Bildirimler temizlenirken bir hata oluştu');
+    }
+  };
+
+  const handleBildirimSil = async (id: string | number) => {
+    try {
+      await deleteNotification(id);
+    } catch (error) {
+      toast.error('Bildirim silinirken bir hata oluştu');
+    }
   };
 
   const handleLogout = () => {
@@ -189,11 +190,17 @@ function FrmNavbar() {
                       </div>
                     </div>
                     <div className="py-2">
-                      {bildirimler.length > 0 ? (
+                      {notificationsLoading ? (
+                        <div className="px-4 py-8 text-center">
+                          <span className="material-symbols-outlined text-subtle-light dark:text-subtle-dark text-4xl mb-2 block animate-spin">sync</span>
+                          <p className="text-sm text-subtle-light dark:text-subtle-dark">Yükleniyor...</p>
+                        </div>
+                      ) : bildirimler.length > 0 ? (
                         bildirimler.map((bildirim) => (
                           <div
                             key={bildirim.id}
-                            className={`px-4 py-3 hover:bg-primary/5 dark:hover:bg-primary/10 transition-colors border-b border-border-light/50 dark:border-border-dark/50 ${
+                            onClick={() => handleBildirimClick(bildirim)}
+                            className={`px-4 py-3 hover:bg-primary/5 dark:hover:bg-primary/10 transition-colors border-b border-border-light/50 dark:border-border-dark/50 cursor-pointer ${
                               !bildirim.okundu ? 'bg-primary/5 dark:bg-primary/10' : ''
                             }`}
                           >

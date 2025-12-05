@@ -11,6 +11,7 @@ const {
     rejectFarm,
     rejectFarmAndDelete,
     sendBelgeEksikMessage,
+    sendProductBelgeEksikMessage,
     getUpdatedDocuments,
     getRegisteredFarmers,
     getFarmerDetails,
@@ -36,6 +37,7 @@ router.post('/farms/reject/:id', rejectFarm);
 router.post('/farms/reject-and-delete/:id', rejectFarmAndDelete);
 // Özel route'ları genel route'lardan önce tanımla (belge-eksik, logs/all)
 router.post('/farms/belge-eksik/:id', sendBelgeEksikMessage);
+router.post('/products/belge-eksik/:id', sendProductBelgeEksikMessage);
 router.get('/farms/:id/updated-documents', getUpdatedDocuments);
 router.get('/farms/logs/all', getAllFarmLogs);
 router.get('/farms/:id/logs', getFarmLogs);

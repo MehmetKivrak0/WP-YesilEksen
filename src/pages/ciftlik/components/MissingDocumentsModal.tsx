@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ciftciService } from '../../../services/ciftciService';
+import { useToast } from '../../../context/ToastContext';
 
 type MissingDocument = {
     id: string;
@@ -23,6 +24,7 @@ type MissingDocumentsModalProps = {
 };
 
 function MissingDocumentsModal({ isOpen, onClose, onDocumentsUploaded }: MissingDocumentsModalProps) {
+    const toast = useToast();
     const [missingDocuments, setMissingDocuments] = useState<MissingDocument[]>([]);
     const [application, setApplication] = useState<{ id: string; name: string; owner: string; status: string } | null>(null);
     const [loading, setLoading] = useState(true);
@@ -127,7 +129,7 @@ function MissingDocumentsModal({ isOpen, onClose, onDocumentsUploaded }: Missing
             }, 100);
         } catch (error) {
             console.error('İndirme hatası:', error);
-            alert('Belge indirilemedi. Lütfen tekrar deneyin.');
+            toast.error('Belge indirilemedi. Lütfen tekrar deneyin.');
         }
     };
 

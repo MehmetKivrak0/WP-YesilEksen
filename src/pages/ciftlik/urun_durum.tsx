@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import CftNavbar from '../../components/cftnavbar';
 import { ciftciService } from '../../services/ciftciService';
+import { useToast } from '../../context/ToastContext';
 
 type DocumentStatus = 'Onaylandı' | 'Eksik' | 'Beklemede' | 'Reddedildi';
 
@@ -16,6 +18,7 @@ type ProductApplication = {
     name: string;
     status: DocumentStatus;
     url?: string;
+    belgeId?: string;
     adminNote?: string;
   }>;
 };
@@ -37,6 +40,9 @@ const documentStatusConfig = {
 };
 
 function UrunDurum() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const toast = useToast();
   const [myProductApplications, setMyProductApplications] = useState<ProductApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,29 +56,45 @@ function UrunDurum() {
   const [selectedImageName, setSelectedImageName] = useState<string>('');
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   // API'den veri çek
-  useEffect(() => {
-    const fetchApplications = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const response = await ciftciService.getMyProductApplications();
-        if (response.success) {
-          setMyProductApplications(response.applications);
-        } else {
-          setError('Başvurular yüklenemedi');
+  const fetchApplications = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await ciftciService.getMyProductApplications();
+      if (response.success) {
+        setMyProductApplications(response.applications);
+        
+        // URL parametresinden modal açma kontrolü
+        const openModal = searchParams.get('openModal');
+        const applicationId = searchParams.get('applicationId');
+        
+        if (openModal === 'true' && applicationId) {
+          // İlgili başvuruyu bul
+          const application = response.applications.find((app: ProductApplication) => app.id === applicationId);
+          if (application && (application.status === 'Revizyon' || application.status === 'İncelemede')) {
+            // URL parametrelerini temizle
+            setSearchParams({}, { replace: true });
+            // Eksik belge modalını aç
+            setShowUpdateModal(true);
+          }
         }
-      } catch (err: any) {
-        console.error('Başvurular yükleme hatası:', err);
-        setError(err.response?.data?.message || 'Başvurular yüklenirken bir hata oluştu');
-      } finally {
-        setLoading(false);
+      } else {
+        setError('Başvurular yüklenemedi');
       }
-    };
+    } catch (err: any) {
+      console.error('Başvurular yükleme hatası:', err);
+      setError(err.response?.data?.message || 'Başvurular yüklenirken bir hata oluştu');
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchApplications();
-  }, []);
+  }, [searchParams, setSearchParams]);
 
   // ESC tuşu ile resim modal'ını kapatma
   useEffect(() => {
@@ -489,41 +511,129 @@ function UrunDurum() {
                       </h3>
                       <div className="space-y-4">
                         {problemDocs.map((doc, idx) => {
-                          const docKey = `${application.id}-${doc.name}`;
+                          // docKey'i belge ID'si ile oluştur (UUID'lerde olmayan :: separator kullan)
+                          // Eğer belge ID yoksa, belge adını kullan (:: separator ile)
+                          // Backend'den gelen belge ID'si camelCase veya küçük harf olabilir
+                          const belgeId = (doc as any).belgeId || (doc as any).belgeid;
+                          const docKey = belgeId 
+                            ? `${application.id}::${belgeId}` 
+                            : `${application.id}::${doc.name}`;
+                          const isReddedildi = doc.status === 'Reddedildi';
+                          const isEksik = doc.status === 'Eksik';
+                          const isBeklemede = doc.status === 'Beklemede';
+                          // Sadece "Eksik" durumunda revize gerekli badge'i göster
+                          const needsRevision = isEksik;
+                          
                           return (
-                            <div key={idx} className="space-y-2">
+                            <div 
+                              key={idx} 
+                              className={`space-y-2 ${
+                                isEksik 
+                                  ? 'bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-300 dark:border-amber-700 rounded-lg p-4 shadow-sm' 
+                                  : ''
+                              }`}
+                            >
+                              {/* Revize Edilecek Belge Başlığı - Sadece Eksik durumunda */}
                               <div className="flex items-center justify-between">
-                                <label className="text-sm font-medium text-content-light dark:text-content-dark flex items-center gap-2">
-                                  <span className="material-symbols-outlined text-base text-subtle-light dark:text-subtle-dark">description</span>
-                                  {doc.name}
-                                  {doc.status === 'Reddedildi' && (
-                                    <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200">
+                                <div className="flex items-center gap-2 flex-1">
+                                  {isEksik && (
+                                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700">
+                                      <span className="material-symbols-outlined text-base text-amber-700 dark:text-amber-300 animate-pulse">warning</span>
+                                      <span className="text-xs font-bold text-amber-800 dark:text-amber-200 uppercase tracking-wide">
+                                        Revize Gerekli
+                                      </span>
+                                    </div>
+                                  )}
+                                  <label className="text-sm font-semibold text-content-light dark:text-content-dark flex items-center gap-2">
+                                    <span className={`material-symbols-outlined text-base ${
+                                      isReddedildi ? 'text-red-600 dark:text-red-400' :
+                                      isEksik ? 'text-orange-600 dark:text-orange-400' :
+                                      'text-amber-600 dark:text-amber-400'
+                                    }`}>
+                                      description
+                                    </span>
+                                    <span className={isEksik ? 'font-bold' : ''}>{doc.name}</span>
+                                  </label>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {isReddedildi && (
+                                    <span className="text-xs px-2.5 py-1 rounded-full bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 text-red-700 dark:text-red-200 font-semibold">
                                       Reddedildi
                                     </span>
                                   )}
-                                </label>
-                                {uploadedFiles[docKey] && (
-                                  <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
-                                    <span className="material-symbols-outlined text-sm">check_circle</span>
-                                    Seçildi
-                                  </span>
-                                )}
+                                  {isEksik && (
+                                    <span className="text-xs px-2.5 py-1 rounded-full bg-orange-100 dark:bg-orange-900 border border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-200 font-semibold">
+                                      Eksik
+                                    </span>
+                                  )}
+                                  {isBeklemede && (
+                                    <span className="text-xs px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-900 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-200 font-semibold">
+                                      Beklemede
+                                    </span>
+                                  )}
+                                  {uploadedFiles[docKey] && (
+                                    <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1 font-semibold">
+                                      <span className="material-symbols-outlined text-sm">check_circle</span>
+                                      Seçildi
+                                    </span>
+                                  )}
+                                </div>
                               </div>
+                              
+                              {/* Admin Notu - Daha Belirgin */}
                               {doc.adminNote && (
-                                <div className="text-xs text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded p-2">
-                                  <span className="font-medium">Not: </span>{doc.adminNote}
+                                <div className={`text-xs font-medium ${
+                                  isReddedildi 
+                                    ? 'text-red-800 dark:text-red-200 bg-red-100 dark:bg-red-900/30 border-2 border-red-300 dark:border-red-700' 
+                                    : 'text-amber-800 dark:text-amber-200 bg-amber-100 dark:bg-amber-900/30 border-2 border-amber-300 dark:border-amber-700'
+                                } rounded-lg p-3`}>
+                                  <div className="flex items-start gap-2">
+                                    <span className="material-symbols-outlined text-base flex-shrink-0">
+                                      {isReddedildi ? 'error' : 'info'}
+                                    </span>
+                                    <div>
+                                      <span className="font-bold">{isReddedildi ? 'Reddetme Nedeni: ' : 'Admin Notu: '}</span>
+                                      {doc.adminNote}
+                                    </div>
+                                  </div>
                                 </div>
                               )}
-                              <label className="group relative flex flex-col border-2 border-dashed border-border-light dark:border-border-dark hover:border-primary dark:hover:border-primary bg-background-light dark:bg-background-dark rounded-lg p-4 transition-all duration-300 cursor-pointer">
+                              
+                              {/* Belge Yükleme Alanı - Sadece Eksik durumunda özel stil */}
+                              <label className={`group relative flex flex-col border-2 border-dashed ${
+                                isEksik
+                                  ? 'border-amber-400 dark:border-amber-600 hover:border-amber-500 dark:hover:border-amber-500 bg-amber-50/50 dark:bg-amber-900/10'
+                                  : 'border-border-light dark:border-border-dark hover:border-primary dark:hover:border-primary bg-background-light dark:bg-background-dark'
+                              } rounded-lg p-4 transition-all duration-300 cursor-pointer`}>
                                 <div className="flex items-center gap-3">
-                                  <div className="w-10 h-10 rounded-lg bg-primary/20 dark:bg-primary/30 flex items-center justify-center flex-shrink-0">
-                                    <span className="material-symbols-outlined text-xl text-primary">upload_file</span>
+                                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                    isEksik
+                                      ? 'bg-amber-200 dark:bg-amber-800'
+                                      : 'bg-primary/20 dark:bg-primary/30'
+                                  }`}>
+                                    <span className={`material-symbols-outlined text-xl ${
+                                      isEksik
+                                        ? 'text-amber-700 dark:text-amber-300'
+                                        : 'text-primary'
+                                    }`}>
+                                      upload_file
+                                    </span>
                                   </div>
                                   <div className="flex-1">
-                                    <p className="text-sm font-medium text-content-light dark:text-content-dark">
+                                    <p className={`text-sm font-medium ${
+                                      isEksik
+                                        ? 'text-amber-900 dark:text-amber-100'
+                                        : 'text-content-light dark:text-content-dark'
+                                    }`}>
                                       {uploadedFiles[docKey]?.name || 'Belge yüklemek için tıklayın'}
                                     </p>
-                                    <p className="text-xs text-subtle-light dark:text-subtle-dark">PDF, JPG, PNG (Max 10MB)</p>
+                                    <p className={`text-xs ${
+                                      isEksik
+                                        ? 'text-amber-700 dark:text-amber-300'
+                                        : 'text-subtle-light dark:text-subtle-dark'
+                                    }`}>
+                                      PDF, JPG, PNG (Max 10MB)
+                                    </p>
                                   </div>
                                 </div>
                                 <input
@@ -571,27 +681,119 @@ function UrunDurum() {
                 İptal
               </button>
               <button
-                onClick={() => {
-                  // Gerçek uygulamada API çağrısı yapılacak
-                  console.log('Yüklenen dosyalar:', uploadedFiles);
-                  console.log('Mesaj:', updateMessage);
-                  
-                  // Başarı mesajını göster
-                  setShowUpdateModal(false);
-                  setShowSuccessMessage(true);
-                  setUploadedFiles({});
-                  setUpdateMessage('');
-                  
-                  // 3 saniye sonra mesajı gizle
-                  setTimeout(() => {
-                    setShowSuccessMessage(false);
-                  }, 3000);
+                onClick={async () => {
+                  if (Object.keys(uploadedFiles).length === 0) {
+                    toast.warning('Lütfen en az bir belge seçin');
+                    return;
+                  }
+
+                  setUploading(true);
+                  try {
+                    // Tüm belgeleri yükle
+                    const uploadPromises = Object.entries(uploadedFiles).map(async ([docKey, file]) => {
+                      if (!file) return;
+                      
+                      // docKey formatı: "applicationId::belgeId" veya "applicationId::docName"
+                      // :: separator kullanarak UUID'lerdeki - karakterlerinden kaçınıyoruz
+                      const parts = docKey.split('::');
+                      if (parts.length !== 2) {
+                        console.error('Geçersiz docKey formatı:', docKey);
+                        return;
+                      }
+                      
+                      const [applicationId, belgeIdentifier] = parts;
+                      
+                      // İlgili başvuruyu bul
+                      const application = myProductApplications.find(app => app.id === applicationId);
+                      if (!application) {
+                        console.error('Başvuru bulunamadı:', applicationId, 'Tüm başvurular:', myProductApplications.map(a => a.id));
+                        return;
+                      }
+                      
+                      // Belgeyi bul - önce belge ID'si ile ara (hem camelCase hem küçük harf), sonra isim ile ara
+                      let document = application.documents.find(doc => {
+                        const docBelgeId = (doc as any).belgeId || (doc as any).belgeid;
+                        return docBelgeId === belgeIdentifier;
+                      });
+                      
+                      // Bulunamadıysa, belge adı ile ara (geriye dönük uyumluluk için)
+                      if (!document) {
+                        document = application.documents.find(doc => doc.name === belgeIdentifier);
+                      }
+                      
+                      if (!document) {
+                        console.error('Belge bulunamadı:', {
+                          docKey,
+                          applicationId,
+                          belgeIdentifier,
+                          mevcutBelgeler: application.documents.map(d => ({ 
+                            name: d.name, 
+                            belgeId: (d as any).belgeId || (d as any).belgeid,
+                            tümKeys: Object.keys(d)
+                          }))
+                        });
+                        return;
+                      }
+                      
+                      // Backend'den gelen belge ID'si camelCase veya küçük harf olabilir
+                      const belgeId = (document as any).belgeId || (document as any).belgeid;
+                      
+                      if (!belgeId) {
+                        console.error('Belge ID bulunamadı:', {
+                          document,
+                          tümKeys: Object.keys(document),
+                          belgeIdCamelCase: (document as any).belgeId,
+                          belgeIdKucukHarf: (document as any).belgeid
+                        });
+                        return;
+                      }
+                      
+                      // Belgeyi yükle (mesaj ile birlikte)
+                      await ciftciService.uploadMissingDocument(belgeId, file, updateMessage || undefined);
+                    });
+
+                    await Promise.all(uploadPromises);
+                    
+                    // Başarı mesajını göster
+                    toast.success('Belgeler başarıyla gönderildi! Durum güncelleniyor...');
+                    
+                    // Modal'ı kapat
+                    setShowUpdateModal(false);
+                    setUploadedFiles({});
+                    setUpdateMessage('');
+                    
+                    // Backend'in durumu güncellemesi için kısa bir bekleme
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    // Başvuruları yeniden yükle (durum güncellemesi için)
+                    await fetchApplications();
+                    
+                    // Başarı mesajını göster
+                    setShowSuccessMessage(true);
+                    setTimeout(() => {
+                      setShowSuccessMessage(false);
+                    }, 3000);
+                  } catch (err: any) {
+                    console.error('Belge yükleme hatası:', err);
+                    toast.error(err.response?.data?.message || 'Belgeler yüklenirken bir hata oluştu');
+                  } finally {
+                    setUploading(false);
+                  }
                 }}
-                disabled={Object.keys(uploadedFiles).length === 0}
+                disabled={Object.keys(uploadedFiles).length === 0 || uploading}
                 className="inline-flex items-center gap-2 px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <span className="material-symbols-outlined text-base">send</span>
-                Gönder ve Admin'e Bildir
+                {uploading ? (
+                  <>
+                    <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                    Gönderiliyor...
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-base">send</span>
+                    Gönder ve Admin'e Bildir
+                  </>
+                )}
               </button>
             </div>
           </div>

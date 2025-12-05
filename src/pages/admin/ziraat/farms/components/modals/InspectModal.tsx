@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { FarmApplication } from '../../types';
 import FarmStatusBadge from '../FarmStatusBadge';
+import { useToast } from '../../../../../../context/ToastContext';
 
 type InspectModalProps = {
   application: FarmApplication;
@@ -11,6 +12,7 @@ function InspectModal({
   application,
   onClose,
 }: InspectModalProps) {
+  const toast = useToast();
   const [viewingDocument, setViewingDocument] = useState<{ url: string; name: string } | null>(null);
   const [documentBlobUrl, setDocumentBlobUrl] = useState<string | null>(null);
   const [documentError, setDocumentError] = useState(false);
@@ -115,7 +117,7 @@ function InspectModal({
       }, 100);
     } catch (error) {
       console.error('İndirme hatası:', error);
-      alert('Belge indirilemedi. Lütfen tekrar deneyin.');
+      toast.error('Belge indirilemedi. Lütfen tekrar deneyin.');
     }
   };
 

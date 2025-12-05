@@ -283,6 +283,27 @@ export function useFarmApplications() {
       }
     } catch (err: any) {
       console.error('Onay hatası:', err);
+      
+      // Eksik belge durumunu kontrol et (400 hatası ama hasMissingDocuments var)
+      if (err?.response?.status === 400 && err?.response?.data?.hasMissingDocuments) {
+        const errorData = err.response.data;
+        console.log('📋 [ONAY] Eksik belgeler tespit edildi:', {
+          missingDocumentsCount: errorData.missingDocuments?.length || 0,
+          message: errorData.message
+        });
+        
+        // Eksik belgeler modalını aç
+        if (errorData.missingDocuments && errorData.missingDocuments.length > 0) {
+          setMissingDocumentsModal({
+            isOpen: true,
+            application: application,
+            missingDocuments: errorData.missingDocuments,
+          });
+          setApprovingId(null);
+          return;
+        }
+      }
+      
       const errorMessage =
         err?.response?.data?.message ||
         err?.message ||

@@ -50,6 +50,7 @@ app.use('/api/firma', require('./src/routes/firmaRoutes.js'));
 app.use('/api/ziraat', require('./src/routes/ziraatRoutes.js'));
 app.use('/api/sanayi', require('./src/routes/sanayiRoutes.js'));
 app.use('/api/documents', require('./src/routes/documentRoutes.js'));
+app.use('/api/notifications', require('./src/routes/notificationRoutes.js'));
 
 //HEALTH CHECK şuna yarar: 
 // API'ların çalışmasını kontrol etmek için

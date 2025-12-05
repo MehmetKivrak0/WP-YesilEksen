@@ -1,15 +1,15 @@
 import CftNavbar from '../../components/cftnavbar';
 import { useState, useEffect, useRef } from 'react';
 import { ciftciService, type CiftlikProfil } from '../../services/ciftciService';
-import Toast from '../../components/Toast';
+import { useToast } from '../../context/ToastContext';
 
 function CiftlikProfil() {
+  const toast = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [fotoPreview, setFotoPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState({ message: '', type: 'success' as 'success' | 'error' | 'info', isVisible: false });
   const [isSertifikaModalOpen, setIsSertifikaModalOpen] = useState(false);
   const [isBelgeModalOpen, setIsBelgeModalOpen] = useState(false);
   const [selectedBelgeUrl, setSelectedBelgeUrl] = useState<string | null>(null);
@@ -141,11 +141,7 @@ function CiftlikProfil() {
         setSertifikaTurleri(response.turler);
       }
     } catch (err: any) {
-      setToast({
-        message: 'Sertifika türleri yüklenirken bir hata oluştu',
-        type: 'error',
-        isVisible: true
-      });
+      toast.error('Sertifika türleri yüklenirken bir hata oluştu');
     }
   };
 
@@ -216,21 +212,13 @@ function CiftlikProfil() {
         setIsEditing(false);
         setFotoPreview(null);
         setOriginalData(ciftlikBilgileri);
-        setToast({
-          message: 'Çiftlik profili başarıyla güncellendi',
-          type: 'success',
-          isVisible: true
-        });
+        toast.success('Çiftlik profili başarıyla güncellendi');
       }
     } catch (err: any) {
       console.error('Profil güncelleme hatası:', err);
       const errorMessage = err.response?.data?.message || 'Profil güncellenirken bir hata oluştu';
       setError(errorMessage);
-      setToast({
-        message: errorMessage,
-        type: 'error',
-        isVisible: true
-      });
+      toast.error(errorMessage);
     } finally {
       setSaving(false);
     }
@@ -271,19 +259,11 @@ function CiftlikProfil() {
             logo_url: response.logo_url,
             website: response.logo_url
           }));
-          setToast({
-            message: 'Logo başarıyla yüklendi',
-            type: 'success',
-            isVisible: true
-          });
+          toast.success('Logo başarıyla yüklendi');
         }
       } catch (err: any) {
         console.error('Logo yükleme hatası:', err);
-        setToast({
-          message: err.response?.data?.message || 'Logo yüklenirken bir hata oluştu',
-          type: 'error',
-          isVisible: true
-        });
+        toast.error(err.response?.data?.message || 'Logo yüklenirken bir hata oluştu');
         setFotoPreview(null);
       }
     }
@@ -293,11 +273,7 @@ function CiftlikProfil() {
   const handleViewDocument = async (url: string, name: string) => {
     // URL kontrolü
     if (!url || url.trim() === '') {
-      setToast({
-        message: 'Belge URL\'si bulunamadı',
-        type: 'error',
-        isVisible: true
-      });
+      toast.error('Belge URL\'si bulunamadı');
       return;
     }
 
@@ -414,11 +390,7 @@ function CiftlikProfil() {
       } catch (error: any) {
         console.error('❌ Belge yükleme hatası:', error);
         setDocumentError(true);
-        setToast({
-          message: error.message || 'Belge yüklenirken bir hata oluştu. Lütfen indirerek görüntüleyin.',
-          type: 'error',
-          isVisible: true
-        });
+        toast.error(error.message || 'Belge yüklenirken bir hata oluştu. Lütfen indirerek görüntüleyin.');
       } finally {
         setDocumentLoading(false);
       }
@@ -426,11 +398,7 @@ function CiftlikProfil() {
       console.log('⚠️ Desteklenmeyen dosya türü:', cleanUrl);
       setDocumentLoading(false);
       setDocumentError(true);
-      setToast({
-        message: 'Bu dosya türü tarayıcıda görüntülenemiyor. Lütfen indirerek görüntüleyin.',
-        type: 'info',
-        isVisible: true
-      });
+      toast.info('Bu dosya türü tarayıcıda görüntülenemiyor. Lütfen indirerek görüntüleyin.');
     }
   };
 
@@ -438,11 +406,7 @@ function CiftlikProfil() {
   const handleDownloadDocument = async (url: string, name: string) => {
     // URL kontrolü
     if (!url || url.trim() === '') {
-      setToast({
-        message: 'Belge URL\'si bulunamadı',
-        type: 'error',
-        isVisible: true
-      });
+      toast.error('Belge URL\'si bulunamadı');
       return;
     }
 
@@ -539,18 +503,10 @@ function CiftlikProfil() {
         URL.revokeObjectURL(blobUrl);
       }, 100);
       
-      setToast({
-        message: 'Belge başarıyla indirildi',
-        type: 'success',
-        isVisible: true
-      });
+      toast.success('Belge başarıyla indirildi');
     } catch (error: any) {
       console.error('❌ İndirme hatası:', error);
-      setToast({
-        message: error.message || 'Belge indirilemedi. Lütfen tekrar deneyin.',
-        type: 'error',
-        isVisible: true
-      });
+      toast.error(error.message || 'Belge indirilemedi. Lütfen tekrar deneyin.');
     }
   };
 
@@ -1284,11 +1240,7 @@ function CiftlikProfil() {
                 <button
                   onClick={async () => {
                     if (!sertifikaForm.sertifika_turu_id || !sertifikaForm.baslangic_tarihi) {
-                      setToast({
-                        message: 'Lütfen zorunlu alanları doldurun',
-                        type: 'error',
-                        isVisible: true
-                      });
+                      toast.error('Lütfen zorunlu alanları doldurun');
                       return;
                     }
                     try {
@@ -1301,11 +1253,7 @@ function CiftlikProfil() {
                         suresiz: sertifikaForm.suresiz,
                         dosya: sertifikaForm.dosya || undefined
                       });
-                      setToast({
-                        message: 'Sertifika başarıyla eklendi',
-                        type: 'success',
-                        isVisible: true
-                      });
+                      toast.success('Sertifika başarıyla eklendi');
                       setIsSertifikaModalOpen(false);
                       setSertifikaForm({
                         sertifika_turu_id: '',
@@ -1318,11 +1266,7 @@ function CiftlikProfil() {
                       });
                       await fetchCiftlikProfil();
                     } catch (err: any) {
-                      setToast({
-                        message: err.response?.data?.message || 'Sertifika eklenirken bir hata oluştu',
-                        type: 'error',
-                        isVisible: true
-                      });
+                      toast.error(err.response?.data?.message || 'Sertifika eklenirken bir hata oluştu');
                     }
                   }}
                   className="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium"
@@ -1504,13 +1448,6 @@ function CiftlikProfil() {
         </div>
       )}
 
-      {/* Toast Notification */}
-      <Toast
-        message={toast.message}
-        type={toast.type}
-        isVisible={toast.isVisible}
-        onClose={() => setToast(prev => ({ ...prev, isVisible: false }))}
-      />
     </div>
   );
 }

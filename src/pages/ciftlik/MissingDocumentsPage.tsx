@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ciftciService } from '../../services/ciftciService';
 import { authService } from '../../services/authService';
+import { useToast } from '../../context/ToastContext';
 
 type MissingDocument = {
     id: string;
@@ -20,6 +21,7 @@ type MissingDocument = {
 
 function MissingDocumentsPage() {
     const navigate = useNavigate();
+    const toast = useToast();
     const [missingDocuments, setMissingDocuments] = useState<MissingDocument[]>([]);
     const [application, setApplication] = useState<{ id: string; name: string; owner: string; status: string } | null>(null);
     const [loading, setLoading] = useState(true);
@@ -140,7 +142,7 @@ function MissingDocumentsPage() {
             }, 100);
         } catch (error) {
             console.error('İndirme hatası:', error);
-            alert('Belge indirilemedi. Lütfen tekrar deneyin.');
+            toast.error('Belge indirilemedi. Lütfen tekrar deneyin.');
         }
     };
 

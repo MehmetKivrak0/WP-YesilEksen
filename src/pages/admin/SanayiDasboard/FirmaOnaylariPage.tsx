@@ -4,6 +4,7 @@ import SanayiNavbar from "./components/SanayiNavbar";
 import { sanayiService } from "../../../services/sanayiService";
 import type { CompanyApplication } from "../../../services/sanayiService";
 import api from "../../../services/api";
+import { useToast } from "../../../context/ToastContext";
 
 const MATERIAL_SYMBOLS_STYLES = `
   .material-symbols-outlined {
@@ -22,6 +23,7 @@ const MATERIAL_SYMBOLS_FONT_ID = "sanayi-firma-onay-font-link";
 const STYLE_ELEMENT_ID = "sanayi-firma-onay-inline-style";
 
 const FirmaOnaylariPage = () => {
+  const toast = useToast();
   useEffect(() => {
     document.title = "Firma Onayları - Sanayi Odası";
 
@@ -97,9 +99,9 @@ const FirmaOnaylariPage = () => {
     } catch (error: any) {
       console.error('Belge indirme hatası:', error);
       if (error.response?.status === 401) {
-        alert('Giriş yapmanız gerekiyor. Lütfen tekrar giriş yapın.');
+        toast.error('Giriş yapmanız gerekiyor. Lütfen tekrar giriş yapın.');
       } else {
-        alert('Belge indirilemedi. Lütfen tekrar deneyin.');
+        toast.error('Belge indirilemedi. Lütfen tekrar deneyin.');
       }
     }
   };
@@ -312,7 +314,6 @@ const FirmaOnaylariPage = () => {
   const [isDescriptionModalOpen, setIsDescriptionModalOpen] = useState(false);
   const [descriptionToShow, setDescriptionToShow] = useState<{ companyName: string; fullMessage: string } | null>(null);
   const [fullRejectionMessages, setFullRejectionMessages] = useState<Map<string, string>>(new Map());
-  const [toast, setToast] = useState<{ show: boolean; type: "success" | "error" | "info"; title: string; message: string } | null>(null);
   const [activityLogs, setActivityLogs] = useState<Array<{
     id: string;
     companyId: string;
@@ -413,16 +414,14 @@ Sanayi Odası Yönetimi`;
   };
 
   const showToast = (type: "success" | "error" | "info", title: string, message: string) => {
-    setToast({ show: true, type, title, message });
-    setTimeout(() => {
-      setToast((prev) => prev ? { ...prev, show: false } : null);
-      setTimeout(() => setToast(null), 300); // Animasyon için bekle
-    }, 5000); // 5 saniye sonra otomatik kapanır
-  };
-
-  const closeToast = () => {
-    setToast((prev) => prev ? { ...prev, show: false } : null);
-    setTimeout(() => setToast(null), 300); // Animasyon için bekle
+    const fullMessage = title ? `${title}: ${message}` : message;
+    if (type === "success") {
+      toast.success(fullMessage);
+    } else if (type === "error") {
+      toast.error(fullMessage);
+    } else {
+      toast.info(fullMessage);
+    }
   };
 
   const handleLogClick = (log: typeof activityLogs[0]) => {
@@ -1220,90 +1219,6 @@ Sanayi Odası Yönetimi`;
         </div>
       )}
 
-      {/* Toast Notification */}
-      {toast && (
-        <div
-          className={`fixed bottom-4 right-4 z-[100] w-full max-w-md transform transition-all duration-300 ${
-            toast.show
-              ? "translate-y-0 opacity-100"
-              : "translate-y-4 opacity-0"
-          }`}
-        >
-          <div
-            className={`rounded-xl border shadow-2xl backdrop-blur-sm ${
-              toast.type === "success"
-                ? "border-emerald-500/50 bg-emerald-50/95 dark:border-emerald-400/50 dark:bg-emerald-900/95"
-                : toast.type === "error"
-                ? "border-red-500/50 bg-red-50/95 dark:border-red-400/50 dark:bg-red-900/95"
-                : "border-blue-500/50 bg-blue-50/95 dark:border-blue-400/50 dark:bg-blue-900/95"
-            }`}
-          >
-            <div className="flex items-start gap-4 p-4">
-              <div
-                className={`flex-shrink-0 rounded-full p-2 ${
-                  toast.type === "success"
-                    ? "bg-emerald-100 dark:bg-emerald-800"
-                    : toast.type === "error"
-                    ? "bg-red-100 dark:bg-red-800"
-                    : "bg-blue-100 dark:bg-blue-800"
-                }`}
-              >
-                <span
-                  className={`material-symbols-outlined text-xl ${
-                    toast.type === "success"
-                      ? "text-emerald-600 dark:text-emerald-300"
-                      : toast.type === "error"
-                      ? "text-red-600 dark:text-red-300"
-                      : "text-blue-600 dark:text-blue-300"
-                  }`}
-                >
-                  {toast.type === "success"
-                    ? "check_circle"
-                    : toast.type === "error"
-                    ? "error"
-                    : "info"}
-                </span>
-              </div>
-              <div className="flex-1">
-                <h3
-                  className={`mb-1 text-sm font-semibold ${
-                    toast.type === "success"
-                      ? "text-emerald-900 dark:text-emerald-100"
-                      : toast.type === "error"
-                      ? "text-red-900 dark:text-red-100"
-                      : "text-blue-900 dark:text-blue-100"
-                  }`}
-                >
-                  {toast.title}
-                </h3>
-                <p
-                  className={`text-sm leading-relaxed ${
-                    toast.type === "success"
-                      ? "text-emerald-800 dark:text-emerald-200"
-                      : toast.type === "error"
-                      ? "text-red-800 dark:text-red-200"
-                      : "text-blue-800 dark:text-blue-200"
-                  }`}
-                >
-                  {toast.message}
-                </p>
-              </div>
-              <button
-                onClick={closeToast}
-                className={`flex-shrink-0 rounded-full p-1 transition-colors hover:bg-[#E8F5E9]/50 dark:hover:bg-[#2E7D32]/20 ${
-                  toast.type === "success"
-                    ? "text-emerald-600 dark:text-emerald-300"
-                    : toast.type === "error"
-                    ? "text-red-600 dark:text-red-300"
-                    : "text-blue-600 dark:text-blue-300"
-                }`}
-              >
-                <span className="material-symbols-outlined text-lg">close</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Açıklama Popup Modal */}
       {isDescriptionModalOpen && descriptionToShow && (

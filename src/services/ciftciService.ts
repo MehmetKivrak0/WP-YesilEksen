@@ -209,10 +209,13 @@ export const ciftciService = {
     /**
      * Eksik belgeyi yükle
      */
-    uploadMissingDocument: async (belgeId: string, file: File): Promise<{ success: boolean; message: string; belgeId: string }> => {
+    uploadMissingDocument: async (belgeId: string, file: File, message?: string): Promise<{ success: boolean; message: string; belgeId: string }> => {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('belgeId', belgeId);
+        if (message) {
+            formData.append('message', message);
+        }
         
         const response = await api.post('/ciftlik/upload-missing-document', formData, {
             headers: {

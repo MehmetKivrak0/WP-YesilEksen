@@ -1,4 +1,5 @@
 const { pool } = require('../config/database');
+const { createNotification } = require('../utils/notificationHelper');
 
 // Sanayi Admin Controller Fonksiyonları
 
@@ -661,7 +662,18 @@ const approveCompany = async (req, res) => {
             });
         }
 
-        // TODO: Bildirim oluştur
+        // Bildirim oluştur - Firmaya başvuru onaylandı bildirimi gönder
+        try {
+            await createNotification({
+                kullanici_id: basvuru.kullanici_id,
+                bildirim_tipi_kod: 'BASVURU',
+                baslik: 'Firma Başvurunuz Onaylandı',
+                mesaj: `"${basvuru.firma_adi}" adlı firma başvurunuz onaylandı! Artık platformu kullanmaya başlayabilirsiniz.${note ? `\n\nNot: ${note}` : ''}`,
+                link: `/firma/panel`
+            });
+        } catch (notificationError) {
+            console.error('⚠️ Bildirim oluşturma hatası (işlem başarılı):', notificationError);
+        }
 
         res.json({
             success: true,
@@ -703,9 +715,11 @@ const rejectCompany = async (req, res) => {
             });
         }
 
-        // Başvuruyu kontrol et
+        // Başvuruyu kontrol et ve firma bilgilerini al
         const checkResult = await client.query(
-            'SELECT id, durum FROM firma_basvurulari WHERE id = $1',
+            `SELECT id, durum, firma_adi, kullanici_id 
+             FROM firma_basvurulari 
+             WHERE id = $1`,
             [id]
         );
 
@@ -717,8 +731,9 @@ const rejectCompany = async (req, res) => {
             });
         }
 
+        const basvuru = checkResult.rows[0];
         // Önceki durumu al
-        const oncekiDurum = checkResult.rows[0].durum;
+        const oncekiDurum = basvuru.durum;
 
         // Başvuru durumunu 'reddedildi' yap ve red nedeni ekle
         await client.query(
@@ -762,7 +777,18 @@ const rejectCompany = async (req, res) => {
             console.error('⚠️ Log kayıt hatası (işlem başarılı):', logError.message);
         }
 
-        // TODO: Bildirim oluştur
+        // Bildirim oluştur - Firmaya başvuru reddedildi bildirimi gönder
+        try {
+            await createNotification({
+                kullanici_id: basvuru.kullanici_id,
+                bildirim_tipi_kod: 'BASVURU',
+                baslik: 'Firma Başvurunuz Reddedildi',
+                mesaj: `"${basvuru.firma_adi}" adlı firma başvurunuz reddedildi.\n\nRed Nedeni: ${reason}\n\nLütfen eksiklikleri tamamlayıp tekrar başvurunuzu yapabilirsiniz.`,
+                link: `/firma/panel`
+            });
+        } catch (notificationError) {
+            console.error('⚠️ Bildirim oluşturma hatası (işlem başarılı):', notificationError);
+        }
 
         res.json({
             success: true,

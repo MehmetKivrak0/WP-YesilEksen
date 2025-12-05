@@ -169,6 +169,16 @@ export const ziraatService = {
         return response.data;
     },
 
+    // Ürün Başvurusu Belge Eksik Bildirimi
+    sendProductBelgeEksikMessage: async (id: string, data: { belgeMessages: Array<{ belgeId: string; farmerMessage: string; adminNote: string; belgeTipi?: 'belge' | 'resim' }> }): Promise<{ success: boolean; message: string }> => {
+        const cleanId = String(id).trim();
+        if (!cleanId) {
+            throw new Error('Geçersiz başvuru ID\'si');
+        }
+        const response = await api.post(`/ziraat/products/belge-eksik/${encodeURIComponent(cleanId)}`, data);
+        return response.data;
+    },
+
     getUpdatedDocuments: async (id: string): Promise<{ 
         success: boolean; 
         application: { id: string; name: string; owner: string; status: string };

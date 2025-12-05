@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import FrmNavbar from '../components/frmnavbar';
+import { useToast } from '../context/ToastContext';
 
 const products = [
   {
@@ -177,6 +178,7 @@ type Product = {
 };
 
 function Atiklar() {
+  const toast = useToast();
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedRegions, setSelectedRegions] = useState<string[]>([]);
@@ -271,7 +273,7 @@ function Atiklar() {
       product: selectedProduct,
       teklif: teklifForm,
     });
-    alert('Teklifiniz başarıyla gönderildi!');
+    toast.success('Teklifiniz başarıyla gönderildi!');
     closeTeklifModal();
   };
 

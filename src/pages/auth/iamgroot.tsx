@@ -3,15 +3,15 @@ import { useNavigate, Link } from 'react-router-dom';
 import { authService } from '../../services/authService';
 import TermsModal from '../../components/TermsModal';
 import PrivacyModal from '../../components/PrivacyModal';
-import Toast from '../../components/Toast';
+import { useToast } from '../../context/ToastContext';
 
 function IamGroot() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
-  const [toast, setToast] = useState({ message: '', type: 'success' as 'success' | 'error' | 'info', isVisible: false });
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -90,11 +90,7 @@ function IamGroot() {
     try {
       // Validasyon
       if (!formData.firstName || !formData.lastName || !formData.email || !formData.password || !formData.phone || !formData.userType || !formData.terms) {
-        setToast({
-          message: 'Lütfen tüm alanları doldurun ve kullanım şartlarını kabul edin.',
-          type: 'error',
-          isVisible: true
-        });
+        toast.error('Lütfen tüm alanları doldurun ve kullanım şartlarını kabul edin.');
         setLoading(false);
         return;
       }
@@ -127,11 +123,7 @@ function IamGroot() {
         localStorage.setItem('token', response.token);
         localStorage.setItem('user', JSON.stringify(response.user));
 
-        setToast({
-          message: response.message || 'Kayıt başarılı! Otomatik giriş yapılıyor...',
-          type: 'success',
-          isVisible: true
-        });
+        toast.success(response.message || 'Kayıt başarılı! Otomatik giriş yapılıyor...');
         
         // Seçilen oda türüne göre yönlendir
         setTimeout(() => {
@@ -145,11 +137,7 @@ function IamGroot() {
         }, 1500);
       } else {
         // Token yoksa (normal kullanıcılar için), giriş sayfasına yönlendir
-        setToast({
-          message: response.message || 'Kayıt başarılı! Admin onayı bekleniyor.',
-          type: 'success',
-          isVisible: true
-        });
+        toast.success(response.message || 'Kayıt başarılı! Admin onayı bekleniyor.');
         
         setTimeout(() => {
           navigate('/giris');
@@ -411,13 +399,6 @@ function IamGroot() {
         <TermsModal isOpen={showTermsModal} onClose={() => setShowTermsModal(false)} />
         <PrivacyModal isOpen={showPrivacyModal} onClose={() => setShowPrivacyModal(false)} />
         
-        {/* Toast Notification */}
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          isVisible={toast.isVisible}
-          onClose={() => setToast(prev => ({ ...prev, isVisible: false }))}
-        />
       </div>
     </div>
   )

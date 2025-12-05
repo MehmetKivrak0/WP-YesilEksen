@@ -3,17 +3,17 @@ import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { authService } from '../../services/authService';
 import TermsModal from '../../components/TermsModal';
 import PrivacyModal from '../../components/PrivacyModal';
-import Toast from '../../components/Toast';
+import { useToast } from '../../context/ToastContext';
 
 function Kayit() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const toast = useToast();
   const [currentStep, setCurrentStep] = useState(1);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
-  const [toast, setToast] = useState({ message: '', type: 'success' as 'success' | 'error' | 'info', isVisible: false });
   const [formData, setFormData] = useState({
     // Step 1: Temel Bilgiler
     firstName: '',
@@ -226,11 +226,7 @@ function Kayit() {
         
         // Hata varsa göster ve dosyayı yükleme
         if (errorMessage) {
-          setToast({
-            message: errorMessage,
-            type: 'error',
-            isVisible: true
-          });
+          toast.error(errorMessage);
           // Input'u temizle
           (e.target as HTMLInputElement).value = '';
           return;
@@ -245,11 +241,7 @@ function Kayit() {
         
         // Başarılı yükleme
         setFormData(prev => ({ ...prev, [name]: sanitizedFile }));
-        setToast({
-          message: `${belgeAdi} başarıyla yüklendi (${fileSizeMB.toFixed(2)} MB)`,
-          type: 'success',
-          isVisible: true
-        });
+        toast.success(`${belgeAdi} başarıyla yüklendi (${fileSizeMB.toFixed(2)} MB)`);
       } else {
         // Dosya seçimi iptal edildi
         setFormData(prev => ({ ...prev, [name]: null }));
@@ -372,11 +364,7 @@ function Kayit() {
       
       // Validasyon
       if (!formData.firstName || !formData.lastName || !formData.email || !formData.userType || !formData.terms) {
-        setToast({
-          message: 'Lütfen tüm alanları doldurun ve kullanım şartlarını kabul edin.',
-          type: 'error',
-          isVisible: true
-        });
+        toast.error('Lütfen tüm alanları doldurun ve kullanım şartlarını kabul edin.');
         return;
       }
       
@@ -386,30 +374,18 @@ function Kayit() {
         if (emailStatus === 'duplicate') {
           const duplicateMessage = emailCheck.message || 'Lütfen Yeni Eposta ile devam ediniz';
           setError(duplicateMessage);
-          setToast({
-            message: duplicateMessage,
-            type: 'error',
-            isVisible: true
-          });
+          toast.error(duplicateMessage);
           return;
         }
         if (emailStatus === 'error') {
           setError(emailCheck.message || 'E-posta kontrolü sırasında bir hata oluştu. Lütfen daha sonra tekrar deneyin.');
-          setToast({
-            message: emailCheck.message || 'E-posta kontrolü sırasında bir hata oluştu. Lütfen daha sonra tekrar deneyin.',
-            type: 'error',
-            isVisible: true
-          });
+          toast.error(emailCheck.message || 'E-posta kontrolü sırasında bir hata oluştu. Lütfen daha sonra tekrar deneyin.');
           return;
         }
       }
       
       if (isPasswordRequired && !formData.password) {
-        setToast({
-          message: 'Lütfen şifre alanını doldurun.',
-          type: 'error',
-          isVisible: true
-        });
+        toast.error('Lütfen şifre alanını doldurun.');
         return;
       }
       
@@ -417,11 +393,7 @@ function Kayit() {
       if (isPasswordRequired && formData.password) {
         const isValid = validatePassword(formData.password);
         if (!isValid) {
-          setToast({
-            message: 'Şifre en az 8 karakter olmalı, büyük harf, küçük harf ve sayı içermelidir.',
-            type: 'error',
-            isVisible: true
-          });
+          toast.error('Şifre en az 8 karakter olmalı, büyük harf, küçük harf ve sayı içermelidir.');
           return;
         }
       }
@@ -430,41 +402,25 @@ function Kayit() {
     // Step 2 validasyonu - Telefon numarası kontrolü
     if (currentStep === 2) {
       if (!formData.phone || formData.phone.trim() === '') {
-        setToast({
-          message: 'Lütfen telefon numarasını girin.',
-          type: 'error',
-          isVisible: true
-        });
+        toast.error('Lütfen telefon numarasını girin.');
         return;
       }
       
       // Telefon numarasını temizle ve kontrol et
       const cleanPhone = formData.phone.replace(/[^0-9]/g, '');
       if (!cleanPhone || cleanPhone.length < 10) {
-        setToast({
-          message: 'Lütfen geçerli bir telefon numarası girin (en az 10 haneli).',
-          type: 'error',
-          isVisible: true
-        });
+        toast.error('Lütfen geçerli bir telefon numarası girin (en az 10 haneli).');
         return;
       }
       
       // Çiftçi için çiftlik adı ve adres kontrolü
       if (formData.userType === 'farmer') {
         if (!formData.farmName || formData.farmName.trim() === '') {
-          setToast({
-            message: 'Lütfen çiftlik adını girin.',
-            type: 'error',
-            isVisible: true
-          });
+          toast.error('Lütfen çiftlik adını girin.');
           return;
         }
         if (!formData.address || formData.address.trim() === '') {
-          setToast({
-            message: 'Lütfen adres bilgisini girin.',
-            type: 'error',
-            isVisible: true
-          });
+          toast.error('Lütfen adres bilgisini girin.');
           return;
         }
       }
@@ -472,27 +428,15 @@ function Kayit() {
       // Şirket için şirket adı, vergi numarası ve adres kontrolü
       if (formData.userType === 'company') {
         if (!formData.companyName || formData.companyName.trim() === '') {
-          setToast({
-            message: 'Lütfen şirket adını girin.',
-            type: 'error',
-            isVisible: true
-          });
+          toast.error('Lütfen şirket adını girin.');
           return;
         }
         if (!formData.taxNumber || formData.taxNumber.trim() === '') {
-          setToast({
-            message: 'Lütfen vergi numarasını girin.',
-            type: 'error',
-            isVisible: true
-          });
+          toast.error('Lütfen vergi numarasını girin.');
           return;
         }
         if (!formData.address || formData.address.trim() === '') {
-          setToast({
-            message: 'Lütfen adres bilgisini girin.',
-            type: 'error',
-            isVisible: true
-          });
+          toast.error('Lütfen adres bilgisini girin.');
           return;
         }
       }
@@ -543,11 +487,7 @@ function Kayit() {
       if (emailStatus === 'duplicate') {
         const duplicateMessage = emailCheck.message || 'Lütfen Yeni Eposta ile devam ediniz';
         setError(duplicateMessage);
-        setToast({
-          message: duplicateMessage,
-          type: 'error',
-          isVisible: true,
-        });
+        toast.error(duplicateMessage);
         setLoading(false);
         return;
       }
@@ -592,22 +532,14 @@ function Kayit() {
       
       // Eksik belgeler varsa uyarı ver
       if (missingDocuments.length > 0) {
-        setToast({
-          message: `Lütfen zorunlu belgeleri yükleyin: ${missingDocuments.join(', ')}`,
-          type: 'error',
-          isVisible: true
-        });
+        toast.error(`Lütfen zorunlu belgeleri yükleyin: ${missingDocuments.join(', ')}`);
         setLoading(false);
         return;
       }
 
       // Telefon numarası kontrolü
       if (!formData.phone || formData.phone.trim() === '') {
-        setToast({
-          message: 'Lütfen telefon numarasını girin.',
-          type: 'error',
-          isVisible: true
-        });
+        toast.error('Lütfen telefon numarasını girin.');
         setLoading(false);
         return;
       }
@@ -618,11 +550,7 @@ function Kayit() {
       
       // Temizlenmiş telefon numarası kontrolü (en az 10 haneli olmalı)
       if (!cleanPhone || cleanPhone.length < 10) {
-        setToast({
-          message: 'Lütfen geçerli bir telefon numarası girin (en az 10 haneli).',
-          type: 'error',
-          isVisible: true
-        });
+        toast.error('Lütfen geçerli bir telefon numarası girin (en az 10 haneli).');
         setLoading(false);
         return;
       }
@@ -676,11 +604,7 @@ function Kayit() {
       // Kayıt işlemini başlat
       await authService.register(registerData);
 
-      setToast({
-        message: 'Kayıt başarılı! Admin onayı bekleniyor.',
-        type: 'success',
-        isVisible: true
-      });
+      toast.success('Kayıt başarılı! Admin onayı bekleniyor.');
       
       // Toast mesajını gösterdikten sonra yönlendir
       setTimeout(() => {
@@ -1904,13 +1828,6 @@ function Kayit() {
         <TermsModal isOpen={showTermsModal} onClose={() => setShowTermsModal(false)} />
         <PrivacyModal isOpen={showPrivacyModal} onClose={() => setShowPrivacyModal(false)} />
         
-        {/* Toast Notification */}
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          isVisible={toast.isVisible}
-          onClose={() => setToast(prev => ({ ...prev, isVisible: false }))}
-        />
       </div>
     </div>
   )

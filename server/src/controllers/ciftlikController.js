@@ -798,8 +798,8 @@ const getMyProductApplications = async (req, res) => {
                         ELSE 'Beklemede'
                     END as status,
                     b.dosya_yolu as url,
-                    b.id::text as belgeId,
-                    COALESCE(b.yonetici_notu, '') as adminNote
+                    b.id::text as "belgeId",
+                    COALESCE(b.yonetici_notu, '') as "adminNote"
                 FROM belgeler b
                 LEFT JOIN belge_turleri bt ON b.belge_turu_id = bt.id
                 WHERE b.basvuru_id = $1 AND b.basvuru_tipi = 'urun_basvurusu'
@@ -818,8 +818,8 @@ const getMyProductApplications = async (req, res) => {
                         END as name,
                         'Beklemede' as status,
                         ur.resim_url as url,
-                        ur.id::text as belgeId,
-                        '' as adminNote
+                        ur.id::text as "belgeId",
+                        '' as "adminNote"
                     FROM urun_resimleri ur
                     WHERE ur.urun_id = $1
                     ORDER BY ur.sira_no`,
@@ -833,8 +833,8 @@ const getMyProductApplications = async (req, res) => {
                         COALESCE(st.ad, 'Kalite Sertifikası') as name,
                         'Beklemede' as status,
                         us.dosya_url as url,
-                        us.id::text as belgeId,
-                        '' as adminNote
+                        us.id::text as "belgeId",
+                        '' as "adminNote"
                     FROM urun_sertifikalari us
                     LEFT JOIN sertifika_turleri st ON us.sertifika_turu_id = st.id
                     WHERE us.urun_id = $1`,
@@ -2031,7 +2031,7 @@ const uploadMissingDocument = async (req, res) => {
         await client.query('BEGIN');
 
         const userId = req.user?.id;
-        const { belgeId } = req.body;
+        const { belgeId, message } = req.body; // message eklendi
         const file = req.file;
 
         if (!userId) {
@@ -2058,15 +2058,18 @@ const uploadMissingDocument = async (req, res) => {
             });
         }
 
-        // Belgeyi kontrol et
+        // Belgeyi kontrol et - hem çiftlik hem ürün başvuruları için
+        // Durum kontrolünü kaldırdık - belge yüklendikten sonra durum güncellemesi yapılabilmesi için
         const belgeResult = await client.query(
-            `SELECT b.id, b.basvuru_id, b.durum, b.inceleme_tarihi, b.dosya_yolu, cb.kullanici_id
+            `SELECT b.id, b.basvuru_id, b.basvuru_tipi, b.durum, b.inceleme_tarihi, b.dosya_yolu,
+                    COALESCE(cb.kullanici_id, ub_c.kullanici_id) as kullanici_id
              FROM belgeler b
-             JOIN ciftlik_basvurulari cb ON b.basvuru_id = cb.id
+             LEFT JOIN ciftlik_basvurulari cb ON b.basvuru_id = cb.id AND b.basvuru_tipi = 'ciftlik_basvurusu'
+             LEFT JOIN urun_basvurulari ub ON b.basvuru_id = ub.id AND b.basvuru_tipi = 'urun_basvurusu'
+             LEFT JOIN ciftlikler ub_c ON ub.ciftlik_id = ub_c.id
              WHERE b.id = $1::uuid 
-               AND b.basvuru_tipi = 'ciftlik_basvurusu'
-               AND b.durum = 'Eksik'
-               AND cb.kullanici_id = $2::uuid`,
+               AND (b.basvuru_tipi = 'ciftlik_basvurusu' OR b.basvuru_tipi = 'urun_basvurusu')
+               AND COALESCE(cb.kullanici_id, ub_c.kullanici_id) = $2::uuid`,
             [belgeId, userId]
         );
 
@@ -2130,52 +2133,92 @@ const uploadMissingDocument = async (req, res) => {
                  dosya_tipi = $3,
                  yuklenme = CURRENT_TIMESTAMP,
                  guncelleme = CURRENT_TIMESTAMP,
-                 durum = 'gcbelge'
+                 durum = 'gcbelge',
+                 kullanici_notu = $5
              WHERE id = $4::uuid`,
-            [relativePath, file.size, path.extname(file.originalname).substring(1).toLowerCase(), belgeId]
+            [relativePath, file.size, path.extname(file.originalname).substring(1).toLowerCase(), belgeId, message || null]
         );
 
         // Başvurudaki tüm eksik belgeleri kontrol et
-        // Eğer hiç eksik belge kalmadıysa, başvuru durumunu 'beklemede' yap
         const eksikBelgeKontrol = await client.query(
             `SELECT COUNT(*) as eksik_sayisi
              FROM belgeler
              WHERE basvuru_id = $1::uuid
-               AND basvuru_tipi = 'ciftlik_basvurusu'
+               AND basvuru_tipi = $2
                AND durum = 'Eksik'
                AND inceleme_tarihi IS NOT NULL`,
-            [belge.basvuru_id]
+            [belge.basvuru_id, belge.basvuru_tipi]
         );
 
         const eksikBelgeSayisi = parseInt(eksikBelgeKontrol.rows[0].eksik_sayisi);
 
-        // Eğer hiç eksik belge kalmadıysa, başvuru durumunu 'gcbelge' yap
-        // "gcbelge" = güncel belge (eksik belgeler yüklendi, admin onayı bekleniyor)
+        // Eğer hiç eksik belge kalmadıysa, başvuru durumunu güncelle
         if (eksikBelgeSayisi === 0) {
-            // Önce mevcut durumu kontrol et
+            if (belge.basvuru_tipi === 'ciftlik_basvurusu') {
+                // Çiftlik başvurusu için
+                const mevcutDurumResult = await client.query(
+                    `SELECT durum FROM ciftlik_basvurulari WHERE id = $1::uuid`,
+                    [belge.basvuru_id]
+                );
+                
+                if (mevcutDurumResult.rows.length > 0) {
+                    const mevcutDurum = mevcutDurumResult.rows[0].durum;
+                    console.log(`🔍 [UPLOAD MISSING DOC] Mevcut başvuru durumu: ${mevcutDurum} - Basvuru ID: ${belge.basvuru_id}`);
+                    
+                    if (mevcutDurum === 'belge_eksik' || mevcutDurum === 'beklemede') {
+                        await client.query(
+                            `UPDATE ciftlik_basvurulari
+                             SET durum = 'gcbelge',
+                                 guncelleme = CURRENT_TIMESTAMP
+                             WHERE id = $1::uuid`,
+                            [belge.basvuru_id]
+                        );
+                        console.log(`✅ [UPLOAD MISSING DOC] Başvuru durumu 'gcbelge' olarak güncellendi (${mevcutDurum} → gcbelge) - Basvuru ID: ${belge.basvuru_id}`);
+                    }
+                }
+            }
+        }
+
+        // Ürün başvurusu için - çiftçi belge gönderdiğinde durumu "incelemede" yap (eksik belge kontrolünden bağımsız)
+        if (belge.basvuru_tipi === 'urun_basvurusu') {
+            console.log(`🔍 [UPLOAD MISSING DOC] Ürün başvurusu kontrolü başlatılıyor - Basvuru ID: ${belge.basvuru_id}`);
+            
             const mevcutDurumResult = await client.query(
-                `SELECT durum FROM ciftlik_basvurulari WHERE id = $1::uuid`,
+                `SELECT durum FROM urun_basvurulari WHERE id = $1::uuid`,
                 [belge.basvuru_id]
             );
             
             if (mevcutDurumResult.rows.length > 0) {
                 const mevcutDurum = mevcutDurumResult.rows[0].durum;
-                console.log(`🔍 [UPLOAD MISSING DOC] Mevcut başvuru durumu: ${mevcutDurum} - Basvuru ID: ${belge.basvuru_id}`);
+                console.log(`🔍 [UPLOAD MISSING DOC] Mevcut ürün başvurusu durumu: '${mevcutDurum}' - Basvuru ID: ${belge.basvuru_id}`);
                 
-                // Durum 'belge_eksik' veya 'beklemede' ise 'gcbelge' yap
-                // (Bazı durumlarda başvuru 'beklemede' olabilir ama eksik belgeler yüklenmiş olabilir)
-                if (mevcutDurum === 'belge_eksik' || mevcutDurum === 'beklemede') {
-                    await client.query(
-                        `UPDATE ciftlik_basvurulari
-                         SET durum = 'gcbelge',
+                // Eğer durum "revizyon" ise "incelemede" yap (çiftçi belge gönderdiğinde)
+                // Case-insensitive kontrol yap
+                if (mevcutDurum && mevcutDurum.toLowerCase() === 'revizyon') {
+                    console.log(`🔄 [UPLOAD MISSING DOC] Durum güncelleniyor: '${mevcutDurum}' → 'incelemede'`);
+                    
+                    const updateResult = await client.query(
+                        `UPDATE urun_basvurulari
+                         SET durum = 'incelemede',
                              guncelleme = CURRENT_TIMESTAMP
-                         WHERE id = $1::uuid`,
+                         WHERE id = $1::uuid
+                         RETURNING id, durum`,
                         [belge.basvuru_id]
                     );
-                    console.log(`✅ [UPLOAD MISSING DOC] Başvuru durumu 'gcbelge' olarak güncellendi (${mevcutDurum} → gcbelge) - Basvuru ID: ${belge.basvuru_id}`);
+                    
+                    if (updateResult.rows.length > 0) {
+                        console.log(`✅ [UPLOAD MISSING DOC] Ürün başvurusu durumu başarıyla güncellendi!`);
+                        console.log(`   - Eski durum: '${mevcutDurum}'`);
+                        console.log(`   - Yeni durum: '${updateResult.rows[0].durum}'`);
+                        console.log(`   - Basvuru ID: ${belge.basvuru_id}`);
+                    } else {
+                        console.error(`❌ [UPLOAD MISSING DOC] Durum güncellemesi başarısız! UPDATE hiçbir satırı etkilemedi.`);
+                    }
                 } else {
-                    console.log(`⚠️ [UPLOAD MISSING DOC] Başvuru durumu '${mevcutDurum}' olduğu için güncellenmedi - Basvuru ID: ${belge.basvuru_id}`);
+                    console.log(`ℹ️ [UPLOAD MISSING DOC] Durum güncellenmedi - Mevcut durum '${mevcutDurum}' 'revizyon' değil.`);
                 }
+            } else {
+                console.error(`❌ [UPLOAD MISSING DOC] Ürün başvurusu bulunamadı! Basvuru ID: ${belge.basvuru_id}`);
             }
         }
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import CftNavbar from '../../components/cftnavbar';
 import { ciftciService } from '../../services/ciftciService';
+import { useToast } from '../../context/ToastContext';
 
 // Birim seçenekleri
 const unitOptions = {
@@ -53,6 +54,7 @@ interface FileState {
 }
 
 function AtikEkle() {
+  const toast = useToast();
   const [selectedWasteType, setSelectedWasteType] = useState('');
   const [customWasteName, setCustomWasteName] = useState(''); // Diğer atık türü için manuel ad
   const [miktar, setMiktar] = useState('');
@@ -132,7 +134,7 @@ function AtikEkle() {
 
     const file = files[0];
     if (file.size > 10 * 1024 * 1024) {
-      alert('Dosya boyutu 10 MB\'dan büyük olamaz!');
+      toast.error('Dosya boyutu 10 MB\'dan büyük olamaz!');
       return;
     }
 

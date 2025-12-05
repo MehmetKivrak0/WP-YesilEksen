@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import ZrtnNavbar from '../../../../components/zrtnavbar';
 import { ziraatService } from '../../../../services/ziraatService';
+import { useToast } from '../../../../context/ToastContext';
 
 type DocumentStatus = 'Onaylandı' | 'Eksik' | 'Beklemede' | 'Reddedildi';
 
@@ -64,6 +65,7 @@ const statusColors: Record<string, string> = {
 };
 
 function ProductApplicationsPage() {
+  const toast = useToast();
   const [selectedStatus, setSelectedStatus] = useState<'Hepsi' | keyof typeof statusColors>('İncelemede');
   const [applications, setApplications] = useState<ProductApplication[]>([]);
   const [loading, setLoading] = useState(true);
@@ -195,11 +197,11 @@ function ProductApplicationsPage() {
           })),
         }));
         setApplications(mappedApplications);
-        alert('Ürün başvurusu başarıyla onaylandı');
+        toast.success('Ürün başvurusu başarıyla onaylandı');
       }
     } catch (err: any) {
       console.error('Onaylama hatası:', err);
-      alert(err.response?.data?.message || 'Onaylama işlemi başarısız');
+      toast.error(err.response?.data?.message || 'Onaylama işlemi başarısız');
     } finally {
       setIsApproving(null);
     }
@@ -208,7 +210,7 @@ function ProductApplicationsPage() {
   const handleRejectSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!rejectedApplication || !rejectReason.trim()) {
-      alert('Lütfen red nedeni girin');
+      toast.warning('Lütfen red nedeni girin');
       return;
     }
 
@@ -252,14 +254,14 @@ function ProductApplicationsPage() {
           })),
         }));
         setApplications(mappedApplications);
-        alert('Ürün başvurusu reddedildi');
+        toast.success('Ürün başvurusu reddedildi');
       }
       
       setRejectedApplication(null);
       setRejectReason('');
     } catch (err: any) {
       console.error('Reddetme hatası:', err);
-      alert(err.response?.data?.message || 'Reddetme işlemi başarısız');
+      toast.error(err.response?.data?.message || 'Reddetme işlemi başarısız');
     } finally {
       setIsRejecting(null);
     }
@@ -387,7 +389,7 @@ function ProductApplicationsPage() {
       }
     } catch (err: any) {
       console.error('Belge durumu güncelleme hatası:', err);
-      alert(err.response?.data?.message || 'Belge durumu güncellenemedi');
+      toast.error(err.response?.data?.message || 'Belge durumu güncellenemedi');
     }
   };
 
@@ -1120,9 +1122,9 @@ function ProductApplicationsPage() {
                   setBelgeEksikLoading(true);
                   setBelgeEksikError(null);
                   try {
-                    // TODO: Backend API'ye eksik belge mesajı gönder
-                    // await ziraatService.sendProductBelgeEksikMessage(selectedApplicationForBelgeEksik.id, { belgeMessages });
-                    alert('Eksik belge bildirimi gönderildi (Backend entegrasyonu yapılacak)');
+                    // Backend API'ye eksik belge mesajı gönder
+                    await ziraatService.sendProductBelgeEksikMessage(selectedApplicationForBelgeEksik.id, { belgeMessages });
+                    toast.success('Eksik belge bildirimi başarıyla gönderildi');
                     
                     // Başvuruları yeniden yükle
                     const response = await ziraatService.getProductApplications({

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import ZrtnNavbar from '../../../../components/zrtnavbar';
 import SummaryCards from './components/SummaryCards';
 import ActivityFeed from './components/ActivityFeed';
@@ -10,8 +10,11 @@ import FarmerDetailModal from './components/FarmerDetailModal';
 import { useDashboardFilters } from './hooks/useDashboardFilters';
 import { ziraatService } from '../../../../services/ziraatService';
 import type { DashboardStats, ProductApplication, FarmApplication } from '../../../../services/ziraatService';
+import { useToast } from '../../../../context/ToastContext';
+import { useNotifications } from '../../../../context/NotificationContext';
 
 function DashboardPage() {
+  const toast = useToast();
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [productApplications, setProductApplications] = useState<ProductApplication[]>([]);
   const [farmApplications, setFarmApplications] = useState<FarmApplication[]>([]);
@@ -26,8 +29,17 @@ function DashboardPage() {
   const [isFarmModalOpen, setIsFarmModalOpen] = useState(false);
   const [selectedFarmerId, setSelectedFarmerId] = useState<string | null>(null);
   const [isFarmerModalOpen, setIsFarmerModalOpen] = useState(false);
+  const navigate = useNavigate();
   const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false);
-  const [bildirimler, setBildirimler] = useState<any[]>([]);
+  const { 
+    notifications: bildirimler, 
+    unreadCount: okunmamisSayisi,
+    loading: notificationsLoading,
+    markAsRead,
+    deleteNotification,
+    deleteAllNotifications,
+    refreshNotifications
+  } = useNotifications();
   const {
     activityFilter,
     setActivityFilter,
@@ -204,10 +216,10 @@ function DashboardPage() {
     try {
       if (selectedProduct) {
         await ziraatService.approveProduct(selectedProduct.id);
-        alert('Ürün başvurusu onaylandı');
+        toast.success('Ürün başvurusu onaylandı');
       } else if (selectedFarm) {
         await ziraatService.approveFarm(selectedFarm.id);
-        alert('Çiftlik başvurusu onaylandı');
+        toast.success('Çiftlik başvurusu onaylandı');
       }
       
       // Verileri yeniden yükle
@@ -218,7 +230,7 @@ function DashboardPage() {
       setSelectedProduct(null);
       setSelectedFarm(null);
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Onaylama başarısız');
+      toast.error(err.response?.data?.message || 'Onaylama başarısız');
     }
   };
 
@@ -226,10 +238,10 @@ function DashboardPage() {
     try {
       if (selectedProduct) {
         await ziraatService.rejectProduct(selectedProduct.id, { reason });
-        alert('Ürün başvurusu reddedildi');
+        toast.success('Ürün başvurusu reddedildi');
       } else if (selectedFarm) {
         await ziraatService.rejectFarm(selectedFarm.id, { reason });
-        alert('Çiftlik başvurusu reddedildi');
+        toast.success('Çiftlik başvurusu reddedildi');
       }
       
       // Verileri yeniden yükle
@@ -240,7 +252,7 @@ function DashboardPage() {
       setSelectedProduct(null);
       setSelectedFarm(null);
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Reddetme başarısız');
+      toast.error(err.response?.data?.message || 'Reddetme başarısız');
     }
   };
 
@@ -262,16 +274,26 @@ function DashboardPage() {
             <div className="flex items-center gap-4">
               <div
                 className="relative"
-                onMouseEnter={() => setIsNotificationMenuOpen(true)}
+                onMouseEnter={() => {
+                  setIsNotificationMenuOpen(true);
+                  refreshNotifications();
+                }}
                 onMouseLeave={() => setIsNotificationMenuOpen(false)}
               >
                 <button 
                   className="p-2 rounded-full bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark hover:bg-primary/10 dark:hover:bg-primary/20 transition-colors relative"
                   type="button"
-                  onClick={() => setIsNotificationMenuOpen((prev) => !prev)}
+                  onClick={() => {
+                    setIsNotificationMenuOpen((prev) => {
+                      if (!prev) {
+                        refreshNotifications();
+                      }
+                      return !prev;
+                    });
+                  }}
                 >
                   <span className="material-symbols-outlined text-content-light dark:text-content-dark">notifications</span>
-                  {bildirimler.filter(b => !b.okundu).length > 0 && (
+                  {okunmamisSayisi > 0 && (
                     <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full"></span>
                   )}
                 </button>
@@ -285,19 +307,33 @@ function DashboardPage() {
                       <div className="px-4 py-3 border-b border-border-light dark:border-border-dark sticky top-0 bg-background-light dark:bg-background-dark">
                         <div className="flex items-center justify-between">
                           <h3 className="text-sm font-semibold text-content-light dark:text-content-dark">Bildirimler</h3>
-                          {bildirimler.filter(b => !b.okundu).length > 0 && (
+                          {okunmamisSayisi > 0 && (
                             <span className="px-2 py-0.5 rounded-full bg-primary/20 dark:bg-primary/30 text-primary text-xs font-medium">
-                              {bildirimler.filter(b => !b.okundu).length} yeni
+                              {okunmamisSayisi} yeni
                             </span>
                           )}
                         </div>
                       </div>
                       <div className="py-2">
-                        {bildirimler.length > 0 ? (
+                        {notificationsLoading ? (
+                          <div className="px-4 py-8 text-center">
+                            <span className="material-symbols-outlined text-subtle-light dark:text-subtle-dark text-4xl mb-2 block animate-spin">sync</span>
+                            <p className="text-sm text-subtle-light dark:text-subtle-dark">Bildirimler yükleniyor...</p>
+                          </div>
+                        ) : bildirimler.length > 0 ? (
                           bildirimler.map((bildirim) => (
                             <div
                               key={bildirim.id}
-                              className={`px-4 py-3 hover:bg-primary/5 dark:hover:bg-primary/10 transition-colors border-b border-border-light/50 dark:border-border-dark/50 ${
+                              onClick={async () => {
+                                if (!bildirim.okundu) {
+                                  await markAsRead(bildirim.id);
+                                }
+                                if (bildirim.link) {
+                                  navigate(bildirim.link);
+                                  setIsNotificationMenuOpen(false);
+                                }
+                              }}
+                              className={`px-4 py-3 hover:bg-primary/5 dark:hover:bg-primary/10 transition-colors border-b border-border-light/50 dark:border-border-dark/50 cursor-pointer ${
                                 !bildirim.okundu ? 'bg-primary/5 dark:bg-primary/10' : ''
                               }`}
                             >
@@ -313,13 +349,13 @@ function DashboardPage() {
                                     {bildirim.mesaj}
                                   </p>
                                   <p className="text-xs text-subtle-light dark:text-subtle-dark mt-1">
-                                    {bildirim.tarih}
+                                    {new Date(bildirim.tarih).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                   </p>
                                 </div>
                                 <button
-                                  onClick={(e) => {
+                                  onClick={async (e) => {
                                     e.stopPropagation();
-                                    setBildirimler(prev => prev.filter(b => b.id !== bildirim.id));
+                                    await deleteNotification(bildirim.id);
                                   }}
                                   className="p-1 hover:bg-primary/10 dark:hover:bg-primary/20 rounded transition-colors flex-shrink-0"
                                   type="button"
@@ -340,8 +376,8 @@ function DashboardPage() {
                       {bildirimler.length > 0 && (
                         <div className="px-4 py-3 border-t border-border-light dark:border-border-dark">
                           <button
-                            onClick={() => {
-                              setBildirimler([]);
+                            onClick={async () => {
+                              await deleteAllNotifications();
                               setIsNotificationMenuOpen(false);
                             }}
                             className="w-full text-sm text-primary hover:text-primary/80 transition-colors"

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { FarmApplication } from '../../types';
 import { ziraatService } from '../../../../../../services/ziraatService';
 import type { MissingDocument } from '../../../../../../services/ziraatService';
+import { useToast } from '../../../../../../context/ToastContext';
 
 type UpdatedDocumentsModalProps = {
   application: FarmApplication;
@@ -16,6 +17,7 @@ function UpdatedDocumentsModal({
   onApproved,
   onRejected,
 }: UpdatedDocumentsModalProps) {
+  const toast = useToast();
   const [updatedDocuments, setUpdatedDocuments] = useState<MissingDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +117,7 @@ function UpdatedDocumentsModal({
       }, 100);
     } catch (error) {
       console.error('İndirme hatası:', error);
-      alert('Belge indirilemedi. Lütfen tekrar deneyin.');
+      toast.error('Belge indirilemedi. Lütfen tekrar deneyin.');
     }
   };
 

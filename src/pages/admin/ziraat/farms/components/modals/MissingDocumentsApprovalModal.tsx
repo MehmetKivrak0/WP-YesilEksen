@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { FarmApplication } from '../../types';
 import type { MissingDocument } from '../../../../../../services/ziraatService';
 import { ziraatService } from '../../../../../../services/ziraatService';
+import { useToast } from '../../../../../../context/ToastContext';
 
 type MissingDocumentsApprovalModalProps = {
   isOpen: boolean;
@@ -18,6 +19,7 @@ function MissingDocumentsApprovalModal({
   onClose,
   onApproved,
 }: MissingDocumentsApprovalModalProps) {
+  const toast = useToast();
   const [checkedAll, setCheckedAll] = useState(false);
   const [loading, setLoading] = useState(false);
   const [viewingDocument, setViewingDocument] = useState<{ url: string; name: string } | null>(null);
@@ -78,11 +80,11 @@ function MissingDocumentsApprovalModal({
         onApproved();
         onClose();
       } else {
-        alert(response.message || 'Onay işlemi başarısız');
+        toast.error(response.message || 'Onay işlemi başarısız');
       }
     } catch (error: any) {
       console.error('Onay hatası:', error);
-      alert(error?.response?.data?.message || 'Onay işlemi sırasında bir hata oluştu');
+      toast.error(error?.response?.data?.message || 'Onay işlemi sırasında bir hata oluştu');
     } finally {
       setLoading(false);
     }
