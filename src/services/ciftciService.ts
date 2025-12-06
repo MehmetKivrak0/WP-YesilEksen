@@ -109,6 +109,33 @@ export const ciftciService = {
     },
 
     /**
+     * Satış geçmişi (sayfalama, filtreleme, arama ile)
+     */
+    getSalesHistory: async (params?: {
+        page?: number;
+        limit?: number;
+        durum?: 'tumu' | 'tamamlandi' | 'kargoda' | 'hazirlaniyor';
+        search?: string;
+    }): Promise<{
+        success: boolean;
+        sales: SonSatis[];
+        pagination: {
+            page: number;
+            limit: number;
+            total: number;
+            totalPages: number;
+        };
+        stats: {
+            toplamSatis: number;
+            tamamlanan: number;
+            toplamGelir: number;
+        };
+    }> => {
+        const response = await api.get('/ciftlik/sales-history', { params });
+        return response.data;
+    },
+
+    /**
      * Aktif ürünler
      */
     getActiveProducts: async (): Promise<{ success: boolean; products: AktifUrun[] }> => {
@@ -293,6 +320,7 @@ export const ciftciService = {
     addWasteProduct: async (productData: {
         atikTuru: string;
         miktar: number;
+        stokSayisi: number;
         birim: string;
         isAnalyzed: boolean;
         hasGuarantee: boolean;
@@ -306,6 +334,7 @@ export const ciftciService = {
         const formData = new FormData();
         formData.append('atikTuru', productData.atikTuru);
         formData.append('miktar', productData.miktar.toString());
+        formData.append('stokSayisi', productData.stokSayisi.toString());
         formData.append('birim', productData.birim);
         formData.append('isAnalyzed', productData.isAnalyzed.toString());
         formData.append('hasGuarantee', productData.hasGuarantee.toString());
@@ -346,6 +375,72 @@ export const ciftciService = {
         }>;
     }> => {
         const response = await api.get('/ciftlik/urun-basvurulari');
+        return response.data;
+    },
+
+    /**
+     * Ürünlerim listesini getir
+     */
+    getMyProducts: async (params?: {
+        page?: number;
+        limit?: number;
+        kategori?: string;
+        durum?: string;
+        search?: string;
+    }): Promise<{
+        success: boolean;
+        products: Array<{
+            id: string;
+            baslik: string;
+            aciklama: string;
+            miktar: number;
+            birim: string;
+            fiyat: number;
+            kategori: string;
+            durum: string;
+            olusturma: string;
+            teklif_sayisi: number;
+            resim_url: string | null;
+        }>;
+        pagination: {
+            page: number;
+            limit: number;
+            total: number;
+            totalPages: number;
+        };
+    }> => {
+        const response = await api.get('/ciftlik/urunler', { params });
+        return response.data;
+    },
+
+    /**
+     * Ürün güncelle
+     */
+    updateProduct: async (productId: string, data: {
+        title?: string;
+        miktar?: number;
+        price?: number;
+        category?: string;
+        desc?: string;
+        birim?: string;
+        durum?: string;
+    }): Promise<{
+        success: boolean;
+        message: string;
+        product: any;
+    }> => {
+        const response = await api.put(`/ciftlik/urunler/${productId}`, data);
+        return response.data;
+    },
+
+    /**
+     * Ürün sil
+     */
+    deleteProduct: async (productId: string): Promise<{
+        success: boolean;
+        message: string;
+    }> => {
+        const response = await api.delete(`/ciftlik/urunler/${productId}`);
         return response.data;
     }
 };

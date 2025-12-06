@@ -62,12 +62,11 @@ const getPanelStats = async (req, res) => {
         );
 
         //Toplam Gelir (zaman aralığına göre)
-        // Not: siparisler tablosunda toplam_tutar yerine genel_toplam kullanılıyor
+        // Not: siparisler tablosunda toplam_fiyat kullanılıyor
         const toplamGelirResult = await pool.query(
-            `SELECT COALESCE(SUM(s.fiyat), 0) as toplam_gelir
+            `SELECT COALESCE(SUM(s.toplam_fiyat), 0) as toplam_gelir
              FROM siparisler s
-             JOIN urunler u ON s.urun_id = u.id
-             WHERE u.ciftlik_id = $1 AND s.durum = 'tamamlandi' ${dateFilter}`,
+             WHERE s.ciftlik_id = $1 AND s.durum = 'tamamlandi' ${dateFilter}`,
             [ciftlik_id]
         );
 
@@ -130,6 +129,7 @@ const getMyProducts = async (req, res) => {
         const ciftlik_id = ciftlikResult.rows[0].id;
 
         // Query oluştur
+        // NOT: Tüm ürünler getirilecek, filtreleme frontend'de yapılacak (urunlerim.tsx)
         let queryText = `
             SELECT 
                 u.id,
@@ -150,7 +150,8 @@ const getMyProducts = async (req, res) => {
             LEFT JOIN teklifler t ON u.id = t.urun_id
             LEFT JOIN birimler b ON u.birim_id = b.id
             LEFT JOIN urun_kategorileri uk ON u.kategori_id = uk.id
-            WHERE u.ciftlik_id = $1 AND u.durum != 'silindi'
+            WHERE u.ciftlik_id = $1 
+              AND u.durum != 'silindi'
         `;
         const queryParams = [ciftlik_id];
         let paramIndex = 2;
@@ -160,16 +161,8 @@ const getMyProducts = async (req, res) => {
             paramIndex++;
         }
 
-        if (durum) {
-            // 'aktif' durumu için hem 'aktif' hem 'stokta' durumundaki ürünleri getir
-            if (durum === 'aktif') {
-                queryText += ` AND u.durum IN ('aktif', 'stokta')`;
-            } else {
-                queryText += ` AND u.durum = $${paramIndex}`;
-                queryParams.push(durum);
-                paramIndex++;
-            }
-        }
+        // NOT: Durum filtresi kaldırıldı çünkü WHERE'de zaten sadece 'aktif' ve 'stokta' ürünleri getiriliyor
+        // Kullanıcı sadece onaylanmış ürünleri görmek istiyor, bu yüzden durum filtresi kullanılmıyor
 
         if (search) {
             queryText += ` AND (u.baslik ILIKE $${paramIndex} OR u.aciklama ILIKE $${paramIndex})`;
@@ -186,6 +179,7 @@ const getMyProducts = async (req, res) => {
 
         //Toplam Sayı
         // Not: urunler tablosunda kategori kolonu yok, kategori_id var ve JOIN ile alınmalı
+        // NOT: Tüm ürünler sayılacak, filtreleme frontend'de yapılacak
         let countQuery = `SELECT COUNT(*) FROM urunler u WHERE u.ciftlik_id = $1 AND u.durum != 'silindi'`;
         const countParams = [ciftlik_id];
         let countIndex = 2;
@@ -195,16 +189,7 @@ const getMyProducts = async (req, res) => {
             countIndex++;
         }
 
-        if (durum) {
-            // 'aktif' durumu için hem 'aktif' hem 'stokta' durumundaki ürünleri say
-            if (durum === 'aktif') {
-                countQuery += ` AND u.durum IN ('aktif', 'stokta')`;
-            } else {
-                countQuery += ` AND u.durum = $${countIndex}`;
-                countParams.push(durum);
-                countIndex++;
-            }
-        }
+        // NOT: Durum filtresi kaldırıldı çünkü WHERE'de zaten sadece 'aktif' ve 'stokta' ürünleri sayılıyor
 
         if (search) {
             countQuery += ` AND (u.baslik ILIKE $${countIndex} OR u.aciklama ILIKE $${countIndex})`;
@@ -380,13 +365,19 @@ const addWasteProduct = async (req, res) => {
     const client = await pool.connect();
     try {
         const user_id = req.user.id;
-        const { atikTuru, miktar, birim, isAnalyzed, hasGuarantee } = req.body;
+        const { atikTuru, miktar, stokSayisi, birim, isAnalyzed, hasGuarantee } = req.body;
 
         // Validasyon
         if (!atikTuru || !miktar || !birim) {
             return res.status(400).json({
                 success: false,
                 message: 'Gerekli alanları doldurunuz (atık türü, miktar, birim)'
+            });
+        }
+        if (stokSayisi === undefined || stokSayisi === null || parseFloat(stokSayisi) < 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Geçerli bir stok sayısı giriniz'
             });
         }
 
@@ -558,20 +549,62 @@ const addWasteProduct = async (req, res) => {
 
         const productId = productResult.rows[0].id;
 
+        // Stok sayısını al (form data'dan)
+        const stokSayisiValue = parseFloat(stokSayisi) || parseFloat(miktar) || 0;
+
+        // Önce stok_sayisi kolonunun var olup olmadığını kontrol et
+        const kolonKontrolResult = await client.query(
+            `SELECT column_name 
+             FROM information_schema.columns 
+             WHERE table_schema = 'public' 
+               AND table_name = 'urun_basvurulari' 
+               AND column_name = 'stok_sayisi'`
+        );
+
+        const stokSayisiKolonuVar = kolonKontrolResult.rows.length > 0;
+
         // Ürün başvurusu oluştur (urun_basvurulari tablosuna)
-        const basvuruResult = await client.query(
-            `INSERT INTO urun_basvurulari
-            (urun_id, ciftlik_id, basvuran_adi, urun_adi, kategori_id, durum)
-            VALUES ($1, $2, $3, $4, $5, 'incelemede')
-            RETURNING id`,
-            [
+        // stok_sayisi kolonu varsa ekle, yoksa ekleme
+        let basvuruQuery;
+        let basvuruParams;
+        
+        if (stokSayisiKolonuVar) {
+            basvuruQuery = `INSERT INTO urun_basvurulari
+                            (urun_id, ciftlik_id, basvuran_adi, urun_adi, kategori_id, durum, stok_sayisi)
+                            VALUES ($1, $2, $3, $4, $5, 'incelemede', $6)
+                            RETURNING id`;
+            basvuruParams = [
                 productId,
                 ciftlik_id,
                 basvuranAdi,
                 baslik,
-                kategori_id
-            ]
-        );
+                kategori_id,
+                stokSayisiValue
+            ];
+        } else {
+            // Kolon yoksa, önce kolonu ekle
+            await client.query(
+                `ALTER TABLE urun_basvurulari 
+                 ADD COLUMN IF NOT EXISTS stok_sayisi NUMERIC(10, 2) DEFAULT 0`
+            );
+            console.log('✅ stok_sayisi kolonu eklendi (urun_basvurulari)');
+            
+            // Şimdi INSERT yap
+            basvuruQuery = `INSERT INTO urun_basvurulari
+                            (urun_id, ciftlik_id, basvuran_adi, urun_adi, kategori_id, durum, stok_sayisi)
+                            VALUES ($1, $2, $3, $4, $5, 'incelemede', $6)
+                            RETURNING id`;
+            basvuruParams = [
+                productId,
+                ciftlik_id,
+                basvuranAdi,
+                baslik,
+                kategori_id,
+                stokSayisiValue
+            ];
+        }
+
+        const basvuruResult = await client.query(basvuruQuery, basvuruParams);
 
         const basvuruId = basvuruResult.rows[0].id;
 
@@ -786,12 +819,17 @@ const getMyProductApplications = async (req, res) => {
         // Her başvuru için tüm belgeleri getir
         const applications = await Promise.all(basvurularResult.rows.map(async (row) => {
             const documents = [];
+            // Ürün başvurusu durumunu kontrol et - eğer onaylandı ise tüm belgeler "Onaylandı" olacak
+            const basvuruOnaylandi = row.durum === 'onaylandi';
+            const basvuruReddedildi = row.durum === 'reddedildi';
 
             // Belgeler tablosundan belgeler
             const belgelerResult = await pool.query(
                 `SELECT 
                     COALESCE(bt.ad, b.ad, 'Belge') as name,
                     CASE 
+                        WHEN $2::boolean = TRUE THEN 'Onaylandı'
+                        WHEN $3::boolean = TRUE THEN 'Reddedildi'
                         WHEN b.durum = 'onaylandi' THEN 'Onaylandı'
                         WHEN b.durum = 'reddedildi' THEN 'Reddedildi'
                         WHEN b.durum = 'eksik' THEN 'Eksik'
@@ -806,7 +844,7 @@ const getMyProductApplications = async (req, res) => {
                 LEFT JOIN belge_turleri bt ON b.belge_turu_id = bt.id
                 WHERE b.basvuru_id = $1 AND b.basvuru_tipi = 'urun_basvurusu'
                 ORDER BY COALESCE(bt.ad, b.ad, '')`,
-                [row.id]
+                [row.id, basvuruOnaylandi, basvuruReddedildi]
             );
             documents.push(...belgelerResult.rows);
 
@@ -818,14 +856,18 @@ const getMyProductApplications = async (req, res) => {
                             WHEN ur.ana_resim = TRUE THEN 'Ürün Fotoğrafı'
                             ELSE 'Ek Fotoğraf'
                         END as name,
-                        'Beklemede' as status,
+                        CASE 
+                            WHEN $2::boolean = TRUE THEN 'Onaylandı'
+                            WHEN $3::boolean = TRUE THEN 'Reddedildi'
+                            ELSE 'Beklemede'
+                        END as status,
                         ur.resim_url as url,
                         ur.id::text as "belgeId",
-                        '' as "adminNote"
+                        '' as "farmerNote"
                     FROM urun_resimleri ur
                     WHERE ur.urun_id = $1
                     ORDER BY ur.sira_no`,
-                    [row.urun_id]
+                    [row.urun_id, basvuruOnaylandi, basvuruReddedildi]
                 );
                 documents.push(...resimlerResult.rows);
 
@@ -833,14 +875,18 @@ const getMyProductApplications = async (req, res) => {
                 const sertifikalarResult = await pool.query(
                     `SELECT 
                         COALESCE(st.ad, 'Kalite Sertifikası') as name,
-                        'Beklemede' as status,
+                        CASE 
+                            WHEN $2::boolean = TRUE THEN 'Onaylandı'
+                            WHEN $3::boolean = TRUE THEN 'Reddedildi'
+                            ELSE 'Beklemede'
+                        END as status,
                         us.dosya_url as url,
                         us.id::text as "belgeId",
-                        '' as "adminNote"
+                        '' as "farmerNote"
                     FROM urun_sertifikalari us
                     LEFT JOIN sertifika_turleri st ON us.sertifika_turu_id = st.id
                     WHERE us.urun_id = $1`,
-                    [row.urun_id]
+                    [row.urun_id, basvuruOnaylandi, basvuruReddedildi]
                 );
                 documents.push(...sertifikalarResult.rows);
             }
@@ -920,24 +966,107 @@ const updateProduct = async (req, res) => {
             });
         }
 
-        //Ürünü güncelle
-        const result = await pool.query(
-            `UPDATE urunler 
-            SET ad = COALESCE($1, ad),
-                baslik = COALESCE($1, baslik),
-                aciklama = COALESCE($2, aciklama),
-                mevcut_miktar = COALESCE($3, mevcut_miktar),
-                miktar = COALESCE($3, miktar),
-                birim = COALESCE($4, birim),
-                birim_fiyat = COALESCE($5, birim_fiyat),
-                fiyat = COALESCE($5, fiyat),
-                kategori = COALESCE($6, kategori),
-                durum = COALESCE($7, durum),
-                guncelleme = CURRENT_TIMESTAMP
-            WHERE id = $8
-            RETURNING *`,
-            [title, desc, miktar, birim, price, category, durum, productId]
-        );
+        // Kategori ID'sini bul (eğer category verildiyse)
+        let kategori_id = null;
+        if (category) {
+            const kategoriResult = await pool.query(
+                `SELECT id FROM urun_kategorileri WHERE ad = $1 OR kod = $2 LIMIT 1`,
+                [category, category.toUpperCase().replace(/\s+/g, '_')]
+            );
+            if (kategoriResult.rows.length > 0) {
+                kategori_id = kategoriResult.rows[0].id;
+            } else {
+                // Kategori yoksa oluştur
+                const newKategoriResult = await pool.query(
+                    `INSERT INTO urun_kategorileri (kod, ad, aktif) 
+                    VALUES ($1, $2, TRUE) 
+                    RETURNING id`,
+                    [category.toUpperCase().replace(/\s+/g, '_'), category]
+                );
+                kategori_id = newKategoriResult.rows[0].id;
+            }
+        }
+
+        // Birim ID'sini bul (eğer birim verildiyse)
+        let birim_id = null;
+        if (birim) {
+            const birimResult = await pool.query(
+                `SELECT id FROM birimler WHERE kod = $1 LIMIT 1`,
+                [birim]
+            );
+            if (birimResult.rows.length > 0) {
+                birim_id = birimResult.rows[0].id;
+            } else {
+                // Birim yoksa oluştur
+                const newBirimResult = await pool.query(
+                    `INSERT INTO birimler (kod, ad, aktif) 
+                    VALUES ($1, $2, TRUE) 
+                    RETURNING id`,
+                    [birim, birim]
+                );
+                birim_id = newBirimResult.rows[0].id;
+            }
+        }
+
+        // Ürünü güncelle - NOT: urunler tablosunda kategori kolonu yok, kategori_id var
+        const updateParams = [];
+        const updateFields = [];
+        let paramIndex = 1;
+
+        if (title !== undefined) {
+            updateFields.push(`ad = $${paramIndex}, baslik = $${paramIndex}`);
+            updateParams.push(title);
+            paramIndex++;
+        }
+        if (desc !== undefined) {
+            updateFields.push(`aciklama = $${paramIndex}`);
+            updateParams.push(desc);
+            paramIndex++;
+        }
+        if (miktar !== undefined) {
+            updateFields.push(`miktar = $${paramIndex}, mevcut_miktar = $${paramIndex}`);
+            updateParams.push(miktar);
+            paramIndex++;
+        }
+        if (birim_id !== null) {
+            updateFields.push(`birim_id = $${paramIndex}`);
+            updateParams.push(birim_id);
+            paramIndex++;
+        }
+        if (price !== undefined) {
+            updateFields.push(`birim_fiyat = $${paramIndex}, fiyat = $${paramIndex}`);
+            updateParams.push(price);
+            paramIndex++;
+        }
+        if (kategori_id !== null) {
+            updateFields.push(`kategori_id = $${paramIndex}`);
+            updateParams.push(kategori_id);
+            paramIndex++;
+        }
+        if (durum !== undefined) {
+            updateFields.push(`durum = $${paramIndex}`);
+            updateParams.push(durum);
+            paramIndex++;
+        }
+
+        if (updateFields.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Güncellenecek alan bulunamadı'
+            });
+        }
+
+        updateFields.push(`guncelleme = CURRENT_TIMESTAMP`);
+        updateParams.push(productId);
+
+        const updateQuery = `
+            UPDATE urunler 
+            SET ${updateFields.join(', ')}
+            WHERE id = $${paramIndex}
+            RETURNING *
+        `;
+
+        const result = await pool.query(updateQuery, updateParams);
 
         res.json({
             success: true,
@@ -974,7 +1103,7 @@ const deleteProduct = async (req, res) => {
         const user_id = req.user.id;
         const productId = req.params.id;
 
-        //çiftlik id'sini bul
+        // Çiftlik id'sini bul
         const ciftlikResult = await pool.query(
             'SELECT id FROM ciftlikler WHERE kullanici_id = $1',
             [user_id]
@@ -988,14 +1117,44 @@ const deleteProduct = async (req, res) => {
         }
         const ciftlik_id = ciftlikResult.rows[0].id;
 
-        //Ürünü soft delete yap (durum = 'silindi')
-        await pool.query(
+        // Önce ürünün kullanıcıya ait olup olmadığını kontrol et
+        const productCheck = await pool.query(
+            `SELECT id, durum FROM urunler 
+             WHERE id = $1 AND ciftlik_id = $2`,
+            [productId, ciftlik_id]
+        );
+
+        if (productCheck.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Ürün bulunamadı veya bu ürünü silme yetkiniz yok'
+            });
+        }
+
+        // Ürün zaten silinmişse
+        if (productCheck.rows[0].durum === 'silindi') {
+            return res.status(400).json({
+                success: false,
+                message: 'Bu ürün zaten silinmiş'
+            });
+        }
+
+        // Ürünü soft delete yap (durum = 'silindi')
+        const updateResult = await pool.query(
             `UPDATE urunler 
             SET durum = 'silindi', 
-                guncelleme_tarihi = CURRENT_TIMESTAMP
-            WHERE id = $1`,
-            [productId]
+                guncelleme = CURRENT_TIMESTAMP
+            WHERE id = $1 AND ciftlik_id = $2
+            RETURNING id`,
+            [productId, ciftlik_id]
         );
+
+        if (updateResult.rows.length === 0) {
+            return res.status(500).json({
+                success: false,
+                message: 'Ürün silinemedi'
+            });
+        }
 
         res.json({
             success: true,
@@ -1160,14 +1319,14 @@ const getRecentSales = async (req, res) => {
                 u.baslik as urun,
                 s.miktar,
                 s.birim_fiyat,
-                s.fiyat,
+                s.toplam_fiyat as fiyat,
                 s.durum,
                 f.ad as alici,
                 s.olusturma as tarih
             FROM siparisler s
             JOIN urunler u ON s.urun_id = u.id
             JOIN firmalar f ON s.firma_id = f.id
-            WHERE u.ciftlik_id = $1 AND s.durum IN ('tamamlandi', 'kargoda', 'hazirlaniyor')
+            WHERE s.ciftlik_id = $1 AND s.durum IN ('tamamlandi', 'kargoda', 'hazirlaniyor')
             ORDER BY s.olusturma DESC
             LIMIT 10`,
             [ciftlik_id]
@@ -1232,6 +1391,193 @@ const getRecentSales = async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Son satışlar alınamadı',
+            error: process.env.NODE_ENV === 'development' ? {
+                message: error.message,
+                detail: error.detail,
+                hint: error.hint,
+                code: error.code
+            } : undefined
+        });
+    }
+};
+
+// Satış Geçmişi - GET /api/ciftlik/sales-history
+const getSalesHistory = async (req, res) => {
+    try {
+        const user_id = req.user.id;
+        const { page = 1, limit = 50, durum, search } = req.query;
+
+        // Çiftlik İd'sini bul
+        const ciftlikResult = await pool.query(
+            'SELECT id FROM ciftlikler WHERE kullanici_id = $1',
+            [user_id]
+        );
+
+        if (ciftlikResult.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Çiftlik bulunamadı'
+            });
+        }
+
+        const ciftlik_id = ciftlikResult.rows[0].id;
+        const offset = (parseInt(page) - 1) * parseInt(limit);
+
+        // Durum filtresi
+        let durumFilter = '';
+        const queryParams = [ciftlik_id];
+        let paramIndex = 2;
+
+        if (durum && durum !== 'tumu') {
+            const durumMap = {
+                'tamamlandi': 'tamamlandi',
+                'kargoda': 'kargoda',
+                'hazirlaniyor': 'hazirlaniyor'
+            };
+            if (durumMap[durum]) {
+                durumFilter = ` AND s.durum = $${paramIndex}`;
+                queryParams.push(durumMap[durum]);
+                paramIndex++;
+            }
+        } else {
+            // Tümü: sadece aktif durumlardaki siparişler
+            durumFilter = ` AND s.durum IN ('tamamlandi', 'kargoda', 'hazirlaniyor')`;
+        }
+
+        // Arama filtresi
+        let searchFilter = '';
+        if (search) {
+            searchFilter = ` AND (u.baslik ILIKE $${paramIndex} OR f.ad ILIKE $${paramIndex})`;
+            queryParams.push(`%${search}%`);
+            paramIndex++;
+        }
+
+        // Toplam sayı
+        const countQuery = `
+            SELECT COUNT(*) as total
+            FROM siparisler s
+            JOIN urunler u ON s.urun_id = u.id
+            JOIN firmalar f ON s.firma_id = f.id
+            WHERE s.ciftlik_id = $1 ${durumFilter} ${searchFilter}
+        `;
+        const countResult = await pool.query(countQuery, queryParams);
+        const total = parseInt(countResult.rows[0].total || 0);
+
+        // Satış verilerini getir
+        queryParams.push(parseInt(limit), offset);
+        const salesQuery = `
+            SELECT 
+                s.id,
+                s.siparis_no,
+                u.baslik as urun,
+                s.miktar,
+                s.birim_fiyat,
+                s.toplam_fiyat as fiyat,
+                s.durum,
+                f.ad as alici,
+                s.olusturma as tarih,
+                birim_tablo.kod as birim
+            FROM siparisler s
+            JOIN urunler u ON s.urun_id = u.id
+            JOIN firmalar f ON s.firma_id = f.id
+            LEFT JOIN birimler birim_tablo ON s.birim_id = birim_tablo.id
+            WHERE s.ciftlik_id = $1 ${durumFilter} ${searchFilter}
+            ORDER BY s.olusturma DESC
+            LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+        `;
+        const salesResult = await pool.query(salesQuery, queryParams);
+
+        // Durum mapping
+        const durumMap = {
+            'tamamlandi': { text: 'Tamamlandı', class: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' },
+            'kargoda': { text: 'Kargoda', class: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' },
+            'hazirlaniyor': { text: 'Hazırlanıyor', class: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' }
+        };
+
+        // Formatlama
+        const formattedSales = salesResult.rows.map(sale => {
+            const durumInfo = durumMap[sale.durum] || { text: sale.durum, class: '' };
+            const birim = sale.birim || 'birim';
+            const miktar = parseFloat(sale.miktar);
+            const birimFiyat = parseFloat(sale.birim_fiyat) || 0;
+            const toplamFiyat = parseFloat(sale.fiyat) || 0;
+
+            return {
+                id: sale.id.toString(),
+                siparisNo: sale.siparis_no || `SP-${sale.id}`,
+                urun: sale.urun,
+                miktar: `${miktar.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${birim}`,
+                birimFiyat: `${birimFiyat.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺ / ${birim}`,
+                fiyat: `${toplamFiyat.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺`,
+                durum: durumInfo.text,
+                durumClass: durumInfo.class,
+                alici: sale.alici,
+                tarih: new Date(sale.tarih).toLocaleDateString('tr-TR')
+            };
+        });
+
+        // İstatistikler (stats için aynı filtreleri kullan ama limit/offset olmadan)
+        const statsParams = [ciftlik_id];
+        let statsParamIndex = 2;
+        
+        if (durum && durum !== 'tumu') {
+            const durumMap = {
+                'tamamlandi': 'tamamlandi',
+                'kargoda': 'kargoda',
+                'hazirlaniyor': 'hazirlaniyor'
+            };
+            if (durumMap[durum]) {
+                statsParams.push(durumMap[durum]);
+                statsParamIndex++;
+            }
+        }
+        
+        if (search) {
+            statsParams.push(`%${search}%`);
+            statsParamIndex++;
+        }
+        
+        const statsQuery = `
+            SELECT 
+                COUNT(*) FILTER (WHERE s.durum = 'tamamlandi') as tamamlandi,
+                COUNT(*) as toplam_satis,
+                COALESCE(SUM(s.toplam_fiyat) FILTER (WHERE s.durum = 'tamamlandi'), 0) as toplam_gelir
+            FROM siparisler s
+            JOIN urunler u ON s.urun_id = u.id
+            JOIN firmalar f ON s.firma_id = f.id
+            WHERE s.ciftlik_id = $1 ${durumFilter} ${searchFilter}
+        `;
+        const statsResult = await pool.query(statsQuery, statsParams);
+
+        res.json({
+            success: true,
+            sales: formattedSales,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total,
+                totalPages: Math.ceil(total / parseInt(limit))
+            },
+            stats: {
+                toplamSatis: parseInt(statsResult.rows[0].toplam_satis || 0),
+                tamamlanan: parseInt(statsResult.rows[0].tamamlandi || 0),
+                toplamGelir: parseFloat(statsResult.rows[0].toplam_gelir || 0)
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Satış geçmişi hatası:', error);
+        console.error('Hata detayı:', {
+            message: error.message,
+            stack: error.stack,
+            query: error.query || 'N/A',
+            code: error.code,
+            detail: error.detail,
+            hint: error.hint
+        });
+        res.status(500).json({
+            success: false,
+            message: 'Satış geçmişi alınamadı',
             error: process.env.NODE_ENV === 'development' ? {
                 message: error.message,
                 detail: error.detail,
@@ -2441,6 +2787,7 @@ module.exports = {
     deleteProduct,
     getPendingOffers,
     getRecentSales,
+    getSalesHistory,
     getCiftlikProfil,
     updateCiftlikProfil,
     uploadCiftlikLogo,

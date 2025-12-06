@@ -5,7 +5,7 @@ type ApplicationFiltersProps = {
   onStatusChange: (status: 'Hepsi' | ProductStatus) => void;
 };
 
-const statusOptions: Array<'Hepsi' | ProductStatus> = ['Hepsi', 'İncelemede', 'Onaylandı', 'Revizyon'];
+const statusOptions: Array<'Hepsi' | ProductStatus> = ['Hepsi', 'İncelemede', 'Onaylandı', 'Revizyon', 'Reddedildi'];
 
 function ApplicationFilters({ selectedStatus, onStatusChange }: ApplicationFiltersProps) {
   return (

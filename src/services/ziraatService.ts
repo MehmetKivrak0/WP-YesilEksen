@@ -123,7 +123,7 @@ export const ziraatService = {
 
     // Ürün Başvurusu Reddet
     rejectProduct: async (id: string, data: { reason: string }): Promise<{ success: boolean; message: string }> => {
-        const response = await api.post(`/ziraat/products/${id}/reject`, data);
+        const response = await api.post(`/ziraat/products/reject/${id}`, data);
         return response.data;
     },
     //Çiftlik Başvurusu Onayla
@@ -213,9 +213,18 @@ export const ziraatService = {
 
     //Çiftçi detayları
     getFarmerDetails: async (id: string): Promise<{ success: boolean; farmer: any }> => {
-        const cleanId = String(id).trim();
-        if (!cleanId) {
+        if (!id || typeof id !== 'string') {
             throw new Error('Geçersiz çiftçi ID\'si');
+        }
+        const cleanId = id.trim();
+        if (!cleanId) {
+            throw new Error('Çiftçi ID\'si boş olamaz');
+        }
+        // UUID format kontrolü (basit)
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(cleanId)) {
+            console.warn('⚠️ Geçersiz UUID formatı:', cleanId);
+            // UUID formatı hatalı olsa bile backend'e gönder, backend daha iyi hata mesajı döndürebilir
         }
         const response = await api.get(`/ziraat/farmers/${encodeURIComponent(cleanId)}`);
         return response.data;

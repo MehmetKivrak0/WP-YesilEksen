@@ -1,9 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import CftNavbar from '../../components/cftnavbar';
+import { ciftciService } from '../../services/ciftciService';
+import { useToast } from '../../context/ToastContext';
+
+// API base URL (resimler için)
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 type Product = {
-  id: number;
+  id: string;
   title: string;
   miktar: string;
   price: string;
@@ -99,6 +104,7 @@ const myProducts: Product[] = [
 ];
 
 function Urunlerim() {
+  const toast = useToast();
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string[]>([]);
@@ -110,7 +116,10 @@ function Urunlerim() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
-  const [products, setProducts] = useState<Product[]>(myProducts);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalProducts, setTotalProducts] = useState(0);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const itemsPerPage = 6;
@@ -119,6 +128,142 @@ function Urunlerim() {
   const categoryRef = useRef<HTMLDivElement>(null);
   const statusRef = useRef<HTMLDivElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+
+  // Backend'den gelen veriyi frontend formatına map et
+  const mapBackendProductToFrontend = (backendProduct: any): Product | null => {
+    // Durum mapping: Backend'den gelen durumları frontend formatına çevir
+    const durumMap: Record<string, 'Aktif' | 'Onay Bekliyor' | 'Satıldı' | 'Pasif'> = {
+      'aktif': 'Aktif',
+      'stokta': 'Aktif',
+      'onay_bekliyor': 'Onay Bekliyor',
+      'onaybekliyor': 'Onay Bekliyor',
+      'satildi': 'Satıldı',
+      'satıldı': 'Satıldı',
+      'pasif': 'Pasif'
+    };
+
+    const durum = durumMap[backendProduct.durum?.toLowerCase() || ''] || 'Pasif';
+
+    // NOT: Sadece onaylanmış (aktif/stokta) ürünler gösterilecek
+    // Onay bekleyen ürünler gösterilmeyecek
+    if (backendProduct.durum?.toLowerCase() !== 'aktif' && backendProduct.durum?.toLowerCase() !== 'stokta') {
+      return null; // Bu ürün gösterilmeyecek
+    }
+    
+    // Resim URL'i - eğer varsa API base URL ile birleştir
+    let imgUrl = 'https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=900&q=80'; // Varsayılan resim
+    if (backendProduct.resim_url) {
+      // Backend'den gelen resim URL'i mutlak URL olarak kaydediliyor (örn: http://localhost:5000/uploads/...)
+      if (backendProduct.resim_url.startsWith('http://') || backendProduct.resim_url.startsWith('https://')) {
+        // Zaten mutlak URL ise direkt kullan
+        imgUrl = backendProduct.resim_url;
+      } else if (backendProduct.resim_url.startsWith('/uploads/')) {
+        // Relative path ise (/uploads/ ile başlıyorsa) API base URL ile birleştir
+        const baseUrl = API_BASE_URL.replace('/api', '');
+        imgUrl = `${baseUrl}${backendProduct.resim_url}`;
+      } else {
+        // Sadece path ise (farmer/123/image.jpg gibi) /uploads/ ekleyerek birleştir
+        const baseUrl = API_BASE_URL.replace('/api', '');
+        imgUrl = `${baseUrl}/uploads/${backendProduct.resim_url}`;
+      }
+    }
+
+    // Fiyat formatı
+    const price = backendProduct.fiyat 
+      ? `${parseFloat(backendProduct.fiyat).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺ / ${backendProduct.birim || 'birim'}`
+      : '0 ₺';
+
+    // Miktar formatı
+    const miktar = backendProduct.miktar 
+      ? `${backendProduct.miktar} ${backendProduct.birim || ''}`.trim()
+      : '0';
+
+    return {
+      id: String(backendProduct.id),
+      title: backendProduct.baslik || backendProduct.ad || 'Ürün Adı Yok',
+      miktar,
+      price,
+      desc: backendProduct.aciklama || '',
+      img: imgUrl,
+      category: backendProduct.kategori || 'Kategori Yok',
+      durum,
+      eklenmeTarihi: backendProduct.olusturma 
+        ? new Date(backendProduct.olusturma).toLocaleDateString('tr-TR')
+        : '',
+      goruntulenme: 0, // Backend'de görüntülenme sayısı yok, şimdilik 0
+      teklifSayisi: parseInt(backendProduct.teklif_sayisi || '0', 10)
+    };
+  };
+
+  // Ürünleri API'den yükle
+  const loadProducts = async () => {
+    setLoading(true);
+    try {
+      // Durum filtresi için backend formatına çevir (ilk seçili durumu kullan)
+      let durumFilter: string | undefined = undefined;
+      if (selectedStatus.length > 0) {
+        const durumBackendMap: Record<string, string> = {
+          'Aktif': 'aktif',
+          'Onay Bekliyor': 'onay_bekliyor',
+          'Satıldı': 'satildi',
+          'Pasif': 'pasif'
+        };
+        durumFilter = durumBackendMap[selectedStatus[0]];
+      }
+
+      // Kategori filtresi için ilk seçili kategoriyi kullan
+      const kategoriFilter = selectedCategories.length > 0 ? selectedCategories[0] : undefined;
+
+      // NOT: Backend'den tüm ürünler getirilecek (silinmemiş olanlar)
+      // Frontend'de sadece onaylanmış (aktif/stokta) ürünler filtrelenecek
+      // Sayfalama da frontend'de yapılacak
+      const response = await ciftciService.getMyProducts({
+        page: 1, // İlk sayfadan başla, tüm ürünleri getir
+        limit: 1000, // Yeterince büyük limit (frontend'de sayfalama yapılacak)
+        kategori: kategoriFilter,
+        search: searchTerm || undefined
+      });
+
+      if (response.success && response.products) {
+        // Tüm ürünleri map et (onaylanmış olmayanlar null döner)
+        const allMappedProducts = response.products.map(mapBackendProductToFrontend);
+        
+        // Sadece onaylanmış (aktif/stokta) ürünleri filtrele
+        const filteredProducts = allMappedProducts.filter(
+          (product): product is Product => product !== null
+        );
+
+        // Sayfalama: Frontend'de yapılacak (çünkü backend tüm ürünleri getiriyor)
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        const endIndex = startIndex + itemsPerPage;
+        const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
+
+        setProducts(paginatedProducts);
+        
+        // Toplam sayfa sayısını filtreleme sonrasına göre hesapla
+        const filteredTotal = filteredProducts.length;
+        setTotalPages(Math.ceil(filteredTotal / itemsPerPage));
+        setTotalProducts(filteredTotal);
+      } else {
+        setProducts([]);
+        setTotalPages(1);
+        setTotalProducts(0);
+      }
+    } catch (error: any) {
+      console.error('Ürünler yüklenirken hata:', error);
+      toast.error(error.response?.data?.message || 'Ürünler yüklenemedi');
+      setProducts([]);
+      setTotalPages(1);
+      setTotalProducts(0);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // İlk yükleme ve filtre değişikliklerinde veri çek
+  useEffect(() => {
+    loadProducts();
+  }, [currentPage, selectedCategories, selectedStatus, searchTerm]);
 
   // Modal açma/kapama fonksiyonları
   const openModal = (product: Product) => {
@@ -186,28 +331,27 @@ function Urunlerim() {
     setIsDeleteConfirmOpen(true);
   };
 
-  const confirmDelete = () => {
-    if (productToDelete) {
-      // Gerçek uygulamada API çağrısı yapılacak
-      // API'ye silme isteği gönder ve yöneticiye bildirim gönder
-      console.log('Ürün siliniyor:', productToDelete);
-      console.log('Yöneticiye bildirim gönderiliyor: Ürün silme talebi -', productToDelete.title);
+  const confirmDelete = async () => {
+    if (!productToDelete) return;
+
+    try {
+      const response = await ciftciService.deleteProduct(productToDelete.id);
       
-      // Ürünü listeden kaldır
-      setProducts(prev => prev.filter(p => p.id !== productToDelete.id));
-      
-      // Başarı mesajı göster
-      setSuccessMessage(`${productToDelete.title} ürünü silme talebi yöneticiye iletildi.`);
-      setShowSuccessMessage(true);
-      
-      // Modal'ları kapat
-      setIsDeleteConfirmOpen(false);
-      setProductToDelete(null);
-      
-      // 3 saniye sonra mesajı gizle
-      setTimeout(() => {
-        setShowSuccessMessage(false);
-      }, 3000);
+      if (response.success) {
+        toast.success(`${productToDelete.title} ürünü başarıyla silindi`);
+        
+        // Ürünleri yeniden yükle
+        await loadProducts();
+        
+        // Modal'ı kapat
+        setIsDeleteConfirmOpen(false);
+        setProductToDelete(null);
+      } else {
+        toast.error(response.message || 'Ürün silinemedi');
+      }
+    } catch (error: any) {
+      console.error('Ürün silme hatası:', error);
+      toast.error(error.response?.data?.message || 'Ürün silinirken bir hata oluştu');
     }
   };
 
@@ -218,64 +362,76 @@ function Urunlerim() {
     setIsModalOpen(false);
   };
 
-  const handleSaveEdit = (editedProduct: Product) => {
-    // Gerçek uygulamada API çağrısı yapılacak
-    console.log('Ürün düzenleniyor:', editedProduct);
-    console.log('Yöneticiye bildirim gönderiliyor: Ürün düzenleme talebi -', editedProduct.title);
-    
-    // Ürünü güncelle ve durumu "Onay Bekliyor" yap
-    setProducts(prev => prev.map(p => 
-      p.id === editedProduct.id 
-        ? { ...editedProduct, durum: 'Onay Bekliyor' as const }
-        : p
-    ));
-    
-    // Başarı mesajı göster
-    setSuccessMessage(`${editedProduct.title} ürünü düzenlendi ve onay için yöneticiye iletildi.`);
-    setShowSuccessMessage(true);
-    
-    // Modal'ı kapat
-    setIsEditModalOpen(false);
-    setSelectedProduct(null);
-    
-    // 3 saniye sonra mesajı gizle
-    setTimeout(() => {
-      setShowSuccessMessage(false);
-    }, 3000);
+  const handleSaveEdit = async (editedProduct: Product) => {
+    try {
+      // Miktardan sayıyı çıkar (örn: "25 Ton" -> 25)
+      const miktarMatch = editedProduct.miktar.match(/(\d+(?:[.,]\d+)?)/);
+      const miktarValue = miktarMatch ? parseFloat(miktarMatch[1].replace(',', '.')) : 0;
+      
+      // Birimi çıkar (örn: "25 Ton" -> "Ton")
+      const birimMatch = editedProduct.miktar.match(/\d+\s*(.+)/);
+      const birimValue = birimMatch ? birimMatch[1].trim() : 'Ton';
+
+      // Fiyattan sayıyı çıkar (örn: "280 ₺ / ton" -> 280)
+      const priceMatch = editedProduct.price.match(/(\d+(?:[.,]\d+)?)/);
+      const priceValue = priceMatch ? parseFloat(priceMatch[1].replace(/[.,]/g, '')) : 0;
+
+      const response = await ciftciService.updateProduct(editedProduct.id, {
+        title: editedProduct.title,
+        miktar: miktarValue,
+        birim: birimValue,
+        price: priceValue,
+        category: editedProduct.category,
+        desc: editedProduct.desc,
+        durum: 'onay_bekliyor' // Düzenlendiğinde onay bekliyor durumuna geç
+      });
+
+      if (response.success) {
+        toast.success(`${editedProduct.title} ürünü düzenlendi ve onay için gönderildi`);
+        
+        // Ürünleri yeniden yükle
+        await loadProducts();
+        
+        // Modal'ı kapat
+        setIsEditModalOpen(false);
+        setSelectedProduct(null);
+      } else {
+        toast.error(response.message || 'Ürün güncellenemedi');
+      }
+    } catch (error: any) {
+      console.error('Ürün güncelleme hatası:', error);
+      toast.error(error.response?.data?.message || 'Ürün güncellenirken bir hata oluştu');
+    }
   };
 
-  // Benzersiz kategorileri ve durumları al
-  const uniqueCategories = Array.from(new Set(products.map((p) => p.category))).sort();
-  const uniqueStatus = ['Aktif', 'Onay Bekliyor', 'Satıldı', 'Pasif'] as const;
+  // Benzersiz kategorileri al (ürünlerden) - Türkçe karakterleri dikkate alarak ad'a göre sırala
+  const uniqueCategories = Array.from(new Set(products.map((p) => p.category)))
+    .sort((a, b) => a.localeCompare(b, 'tr', { sensitivity: 'base' }));
+  // NOT: Sadece onaylanmış ürünler gösteriliyor, bu yüzden 'Onay Bekliyor' seçeneği yok
+  const uniqueStatus = ['Aktif', 'Satıldı', 'Pasif'] as const;
 
-  // Filtreleme mantığı
-  const filteredProducts = products.filter((product) => {
-    const categoryMatch = selectedCategories.length === 0 || selectedCategories.includes(product.category);
-    const statusMatch = selectedStatus.length === 0 || selectedStatus.includes(product.durum);
-    const searchMatch = searchTerm === '' || 
-      product.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.category.toLowerCase().includes(searchTerm.toLowerCase());
-    return categoryMatch && statusMatch && searchMatch;
-  });
-
-  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const currentProducts = filteredProducts.slice(startIndex, endIndex);
+  // Filtreleme artık backend'de yapılıyor, sadece görüntülenen ürünler
+  const currentProducts = products;
 
   // Filtre değiştiğinde sayfayı sıfırla
   const handleCategoryToggle = (category: string) => {
-    setSelectedCategories((prev) =>
-      prev.includes(category) ? prev.filter((c) => c !== category) : [...prev, category]
-    );
-    setCurrentPage(1);
+    setSelectedCategories((prev) => {
+      const newCategories = prev.includes(category) 
+        ? prev.filter((c) => c !== category) 
+        : [category]; // Sadece bir kategori seçilebilir (backend limiti)
+      setCurrentPage(1); // Filtre değiştiğinde sayfa sıfırlanır
+      return newCategories;
+    });
   };
 
   const handleStatusToggle = (status: string) => {
-    setSelectedStatus((prev) =>
-      prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status]
-    );
-    setCurrentPage(1);
+    setSelectedStatus((prev) => {
+      const newStatus = prev.includes(status) 
+        ? prev.filter((s) => s !== status) 
+        : [status]; // Sadece bir durum seçilebilir (backend limiti)
+      setCurrentPage(1); // Filtre değiştiğinde sayfa sıfırlanır
+      return newStatus;
+    });
   };
 
   const clearAllFilters = () => {
@@ -521,8 +677,16 @@ function Urunlerim() {
           </div>
 
           {/* Ürün Listesi */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-            {currentProducts.map((product) => (
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+                <p className="text-sm text-subtle-light dark:text-subtle-dark">Ürünler yükleniyor...</p>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+              {currentProducts.map((product) => (
               <div
                 key={product.id}
                 className="group flex flex-col overflow-hidden rounded-lg border border-border-light dark:border-border-dark bg-background-light dark:bg-background-dark text-left shadow-sm transition-shadow duration-300 hover:shadow-lg"
@@ -578,11 +742,12 @@ function Urunlerim() {
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
 
           {/* Boş Durum */}
-          {filteredProducts.length === 0 && (
+          {!loading && currentProducts.length === 0 && (
             <div className="text-center py-12">
               <span className="material-symbols-outlined text-6xl text-subtle-light dark:text-subtle-dark mb-4 block">inventory_2</span>
               <p className="text-lg font-medium text-content-light dark:text-content-dark mb-2">Ürün bulunamadı</p>
@@ -602,7 +767,7 @@ function Urunlerim() {
           )}
 
           {/* Sayfalama */}
-          {totalPages > 1 && (
+          {!loading && totalPages > 1 && (
             <div className="flex items-center justify-center gap-2 flex-wrap mt-8">
               <button
                 type="button"
@@ -764,7 +929,7 @@ function Urunlerim() {
                 <strong className="text-content-light dark:text-content-dark">{productToDelete.title}</strong> ürününü silmek istediğinizden emin misiniz?
               </p>
               <p className="text-xs text-subtle-light dark:text-subtle-dark mb-6">
-                Bu işlem yöneticiye bildirilecek ve onay sonrası ürün kalıcı olarak silinecektir.
+                Bu işlem ürünü listeden kaldıracaktır. Silinen ürünler daha sonra geri getirilemez.
               </p>
               <div className="flex gap-3">
                 <button

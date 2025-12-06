@@ -58,6 +58,7 @@ function AtikEkle() {
   const [selectedWasteType, setSelectedWasteType] = useState('');
   const [customWasteName, setCustomWasteName] = useState(''); // Diğer atık türü için manuel ad
   const [miktar, setMiktar] = useState('');
+  const [stokSayisi, setStokSayisi] = useState(''); // Stok sayısı
   const [salesUnit, setSalesUnit] = useState('ton');
   const [isAnalyzed, setIsAnalyzed] = useState(false);
   const [hasGuarantee, setHasGuarantee] = useState(false);
@@ -88,8 +89,9 @@ function AtikEkle() {
       if (selectedWasteType !== 'diger') {
         setSalesUnit(selectedWaste.defaultUnit);
       }
-      // Miktarı sıfırla (yeni atık türü için)
+      // Miktarı ve stok sayısını sıfırla (yeni atık türü için)
       setMiktar('');
+      setStokSayisi('');
       // Diğer atık türü değilse custom name'i temizle
       if (selectedWasteType !== 'diger') {
         setCustomWasteName('');
@@ -97,6 +99,7 @@ function AtikEkle() {
     } else {
       setSalesUnit('ton');
       setMiktar('');
+      setStokSayisi('');
       setCustomWasteName('');
     }
   }, [selectedWasteType, selectedWaste]);
@@ -185,6 +188,10 @@ function AtikEkle() {
       setSubmitError('Lütfen geçerli bir miktar girin');
       return;
     }
+    if (!stokSayisi || parseFloat(stokSayisi) < 0) {
+      setSubmitError('Lütfen geçerli bir stok sayısı girin');
+      return;
+    }
     if (!productPhoto.file) {
       setSubmitError('Ürün fotoğrafı zorunludur');
       return;
@@ -210,6 +217,7 @@ function AtikEkle() {
       const result = await ciftciService.addWasteProduct({
         atikTuru: selectedWasteType === 'diger' && customWasteName ? customWasteName : selectedWasteType,
         miktar: parseFloat(miktar),
+        stokSayisi: parseFloat(stokSayisi),
         birim: salesUnit,
         isAnalyzed,
         hasGuarantee,
@@ -223,9 +231,9 @@ function AtikEkle() {
 
       if (result.success) {
         setSubmitSuccess(true);
-        // 2 saniye sonra ürünlerim sayfasına yönlendir
+        // 2 saniye sonra ürün durum sayfasına yönlendir
         setTimeout(() => {
-          navigate('/ciftlik/urunlerim');
+          navigate('/ciftlik/urun-durum');
         }, 2000);
       } else {
         setSubmitError(result.message || 'Ürün eklenirken bir hata oluştu');
@@ -375,6 +383,29 @@ function AtikEkle() {
                         </p>
                       </div>
                     )}
+                  </div>
+
+                  {/* Stok Sayısı */}
+                  <div>
+                    <label className="block text-sm font-medium text-content-light dark:text-content-dark mb-2">
+                      Stok Sayısı *
+                    </label>
+                    <div className="relative">
+                      <input 
+                        className="form-input w-full h-12 px-4 pl-12 text-base bg-background-light dark:bg-background-dark border-2 border-border-light dark:border-border-dark rounded-xl focus:ring-2 focus:ring-primary focus:border-primary text-content-light dark:text-content-dark placeholder:text-subtle-light dark:placeholder:text-subtle-dark transition-all hover:border-primary/50 disabled:opacity-50 disabled:cursor-not-allowed" 
+                        placeholder="Stok sayısı girin" 
+                        type="number" 
+                        value={stokSayisi}
+                        onChange={(e) => setStokSayisi(e.target.value)}
+                        min="0"
+                        step="0.01"
+                        disabled={!selectedWasteType}
+                      />
+                      <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-subtle-light dark:text-subtle-dark">inventory</span>
+                    </div>
+                    <p className="mt-1 text-xs text-subtle-light dark:text-subtle-dark">
+                      Mevcut stok miktarını girin ({salesUnit === 'ton' ? 'ton' : salesUnit === 'kg' ? 'kg' : salesUnit === 'm3' ? 'm³' : 'litre'})
+                    </p>
                   </div>
 
                   <div>
@@ -940,7 +971,7 @@ function AtikEkle() {
               <button 
                 type="button"
                 onClick={handleSubmit}
-                disabled={isSubmitting || !selectedWasteType || !miktar || !productPhoto.file || !originDocument.file}
+                disabled={isSubmitting || !selectedWasteType || !miktar || !stokSayisi || !productPhoto.file || !originDocument.file}
                 className="w-full group relative overflow-hidden flex items-center justify-center gap-3 rounded-xl h-14 px-6 bg-gradient-to-r from-primary to-primary/90 text-white text-base font-bold hover:from-primary/90 hover:to-primary/80 transition-all duration-300 shadow-xl shadow-primary/30 hover:shadow-2xl hover:shadow-primary/40 hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
                 {isSubmitting ? (

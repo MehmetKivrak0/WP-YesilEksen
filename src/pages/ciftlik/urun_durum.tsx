@@ -40,11 +40,14 @@ const documentStatusConfig = {
   'Güncel Belge': { color: 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200', icon: 'update' },
 };
 
+type ProductStatus = 'Onaylandı' | 'İncelemede' | 'Revizyon' | 'Reddedildi';
+
 function UrunDurum() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const toast = useToast();
   const [myProductApplications, setMyProductApplications] = useState<ProductApplication[]>([]);
+  const [selectedStatus, setSelectedStatus] = useState<'Hepsi' | ProductStatus>('Hepsi');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedApplication, setSelectedApplication] = useState<ProductApplication | null>(null);
@@ -58,6 +61,11 @@ function UrunDurum() {
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  // Filtrelenmiş başvurular
+  const filteredApplications = selectedStatus === 'Hepsi'
+    ? myProductApplications
+    : myProductApplications.filter((app) => app.status === selectedStatus);
 
   // API'den veri çek
   const fetchApplications = async () => {
@@ -117,10 +125,34 @@ function UrunDurum() {
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-4xl font-bold text-content-light dark:text-content-dark mb-2">Ürün Başvuru Durumlarım</h1>
-            <p className="text-lg text-subtle-light dark:text-subtle-dark">
-              Eklediğiniz ürünlerin onay durumlarını ve admin notlarını takip edin
-            </p>
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+              <div>
+                <h1 className="text-4xl font-bold text-content-light dark:text-content-dark mb-2">Ürün Başvuru Durumlarım</h1>
+                <p className="text-lg text-subtle-light dark:text-subtle-dark">
+                  Eklediğiniz ürünlerin onay durumlarını ve admin notlarını takip edin
+                </p>
+              </div>
+              {/* Durum Filtresi */}
+              {!loading && myProductApplications.length > 0 && (
+                <div className="flex items-center gap-3">
+                  <label htmlFor="status-filter" className="text-sm font-medium text-content-light dark:text-content-dark whitespace-nowrap">
+                    Durum Filtresi:
+                  </label>
+                  <select
+                    id="status-filter"
+                    value={selectedStatus}
+                    onChange={(e) => setSelectedStatus(e.target.value as 'Hepsi' | ProductStatus)}
+                    className="rounded-lg border border-border-light dark:border-border-dark bg-background-light dark:bg-background-dark px-4 py-2 text-sm font-medium text-content-light dark:text-content-dark focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-colors min-w-[160px]"
+                  >
+                    <option value="Hepsi">Hepsi</option>
+                    <option value="Onaylandı">Onaylandı</option>
+                    <option value="İncelemede">İncelemede</option>
+                    <option value="Revizyon">Revizyon</option>
+                    <option value="Reddedildi">Reddedildi</option>
+                  </select>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Loading State */}
@@ -185,72 +217,100 @@ function UrunDurum() {
             </div>
           )}
 
+          {/* Filtre Bilgisi */}
+          {!loading && !error && myProductApplications.length > 0 && selectedStatus !== 'Hepsi' && (
+            <div className="mb-4 text-sm text-subtle-light dark:text-subtle-dark">
+              <span className="font-medium">
+                {filteredApplications.length} ürün gösteriliyor ({selectedStatus})
+              </span>
+            </div>
+          )}
+
           {/* Applications List */}
           {!loading && !error && myProductApplications.length > 0 && (
             <div className="space-y-4">
-              {myProductApplications.map((application) => {
-              const config = statusConfig[application.status];
-              return (
-                <div
-                  key={application.id}
-                  className="bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-xl p-6 hover:shadow-lg transition-shadow"
-                >
-                  <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h2 className="text-2xl font-semibold text-content-light dark:text-content-dark">{application.product}</h2>
-                        <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${config.color}`}>
-                          <span className="material-symbols-outlined text-base">{config.icon}</span>
-                          {application.status}
-                        </span>
-                      </div>
-                      <p className="text-sm text-subtle-light dark:text-subtle-dark">
-                        Kategori: {application.category} • Başvuru: {application.submittedAt} • Son Güncelleme: {application.lastUpdate}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setSelectedApplication(application)}
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium"
+              {filteredApplications.length === 0 ? (
+                <div className="bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-xl p-12 text-center">
+                  <span className="material-symbols-outlined text-6xl text-subtle-light dark:text-subtle-dark mb-4">filter_list</span>
+                  <h3 className="text-xl font-semibold text-content-light dark:text-content-dark mb-2">
+                    Filtreye uygun ürün bulunamadı
+                  </h3>
+                  <p className="text-subtle-light dark:text-subtle-dark mb-4">
+                    Seçilen duruma ({selectedStatus}) sahip ürün bulunmuyor
+                  </p>
+                  <button
+                    onClick={() => setSelectedStatus('Hepsi')}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors font-medium"
+                  >
+                    <span className="material-symbols-outlined text-base">clear_all</span>
+                    Filtreyi Temizle
+                  </button>
+                </div>
+              ) : (
+                filteredApplications.map((application) => {
+                  const config = statusConfig[application.status];
+                  return (
+                    <div
+                      key={application.id}
+                      className="bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-xl p-6 hover:shadow-lg transition-shadow"
                     >
-                      <span className="material-symbols-outlined text-base">visibility</span>
-                      Detayları Gör
-                    </button>
-                  </div>
+                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <h2 className="text-2xl font-semibold text-content-light dark:text-content-dark">{application.product}</h2>
+                            <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${config.color}`}>
+                              <span className="material-symbols-outlined text-base">{config.icon}</span>
+                              {application.status}
+                            </span>
+                          </div>
+                          <p className="text-sm text-subtle-light dark:text-subtle-dark">
+                            Kategori: {application.category} • Başvuru: {application.submittedAt} • Son Güncelleme: {application.lastUpdate}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => setSelectedApplication(application)}
+                          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium"
+                        >
+                          <span className="material-symbols-outlined text-base">visibility</span>
+                          Detayları Gör
+                        </button>
+                      </div>
 
-                  {/* Admin Notes */}
-                  {application.adminNotes && (
-                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-4">
-                      <div className="flex items-start gap-2">
-                        <span className="material-symbols-outlined text-blue-600 dark:text-blue-400">info</span>
-                        <div>
-                          <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">Admin Notu:</p>
-                          <p className="text-sm text-blue-700 dark:text-blue-300">{application.adminNotes}</p>
+                      {/* Admin Notes */}
+                      {application.adminNotes && (
+                        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-4">
+                          <div className="flex items-start gap-2">
+                            <span className="material-symbols-outlined text-blue-600 dark:text-blue-400">info</span>
+                            <div>
+                              <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">Admin Notu:</p>
+                              <p className="text-sm text-blue-700 dark:text-blue-300">{application.adminNotes}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Documents Quick View */}
+                      <div>
+                        <p className="text-sm font-medium text-content-light dark:text-content-dark mb-2">Belgeler:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {application.documents.map((doc, idx) => {
+                            const docConfig = documentStatusConfig[doc.status];
+                            return (
+                              <div
+                                key={idx}
+                                className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${docConfig.color}`}
+                              >
+                                <span className="material-symbols-outlined text-sm">{docConfig.icon}</span>
+                                {doc.name}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     </div>
-                  )}
-
-                  {/* Documents Quick View */}
-                  <div>
-                    <p className="text-sm font-medium text-content-light dark:text-content-dark mb-2">Belgeler:</p>
-                    <div className="flex flex-wrap gap-2">
-                      {application.documents.map((doc, idx) => {
-                        const docConfig = documentStatusConfig[doc.status];
-                        return (
-                          <div
-                            key={idx}
-                            className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${docConfig.color}`}
-                          >
-                            <span className="material-symbols-outlined text-sm">{docConfig.icon}</span>
-                            {doc.name}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+                  );
+                })
+              )}
             </div>
           )}
         </div>

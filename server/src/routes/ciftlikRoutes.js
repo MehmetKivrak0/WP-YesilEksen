@@ -8,6 +8,7 @@ const {
     deleteProduct,
     getPendingOffers,
     getRecentSales,
+    getSalesHistory,
     getCiftlikProfil,
     updateCiftlikProfil,
     uploadCiftlikLogo,
@@ -34,6 +35,9 @@ router.get('/panel/pending-offers', getPendingOffers);
 
 // Son satışlar
 router.get('/panel/recent-sales', getRecentSales);
+
+// Satış geçmişi (sayfalama, filtreleme, arama ile)
+router.get('/sales-history', getSalesHistory);
 
 // Ürünler
 router.get('/urunler', getMyProducts);

@@ -64,6 +64,7 @@ const statusColors: Record<string, string> = {
   Onaylandı: 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200',
   İncelemede: 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200',
   Revizyon: 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200',
+  Reddedildi: 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200',
 };
 
 function ProductApplicationsPage() {
@@ -95,6 +96,94 @@ function ProductApplicationsPage() {
   const [documentMessages, setDocumentMessages] = useState<Record<string, { farmerMessage: string; adminNote: string }>>({});
   const [belgeEksikLoading, setBelgeEksikLoading] = useState(false);
   const [belgeEksikError, setBelgeEksikError] = useState<string | null>(null);
+  const [isExportingReport, setIsExportingReport] = useState(false);
+
+  // Rapor İndir fonksiyonu
+  const handleDownloadReport = () => {
+    setIsExportingReport(true);
+    try {
+      // CSV header'ı
+      const headers = [
+        'Ürün Adı',
+        'Başvuran',
+        'Kategori',
+        'Durum',
+        'Başvuru Tarihi',
+        'Son Güncelleme',
+        'Çiftlik',
+        'İletişim Adı',
+        'Telefon',
+        'E-posta',
+        'Notlar',
+        'Belge Sayısı'
+      ];
+
+      // CSV hücre değerlerini escape etme helper fonksiyonu
+      const escapeCsvCell = (value: string | number | undefined | null): string => {
+        const str = String(value || '');
+        // Virgül, tırnak veya yeni satır içeriyorsa tırnak içine al ve çift tırnak yap
+        if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      };
+
+      // Filtrelenmiş başvurulardan veri oluştur
+      const csvData = filteredApplications.map((app) => {
+        // Tarih formatını düzelt
+        const submittedAt = app.submittedAt 
+          ? new Date(app.submittedAt).toLocaleDateString('tr-TR', { 
+              year: 'numeric', 
+              month: '2-digit', 
+              day: '2-digit' 
+            })
+          : '';
+
+        return [
+          escapeCsvCell(app.product),
+          escapeCsvCell(app.applicant),
+          escapeCsvCell(app.category),
+          escapeCsvCell(app.status),
+          escapeCsvCell(submittedAt),
+          escapeCsvCell(app.lastUpdate),
+          escapeCsvCell(app.farm),
+          escapeCsvCell(app.contact?.name),
+          escapeCsvCell(app.contact?.phone),
+          escapeCsvCell(app.contact?.email),
+          escapeCsvCell(app.notes),
+          app.documents?.length || 0
+        ].join(',');
+      });
+
+      // BOM ekle (Excel'de Türkçe karakterler için)
+      const BOM = '\uFEFF';
+      const csvContent = BOM + headers.join(',') + '\n' + csvData.join('\n');
+
+      // Blob oluştur ve indir
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      
+      // Dosya adını oluştur
+      const date = new Date().toISOString().split('T')[0];
+      const statusText = selectedStatus === 'Hepsi' ? 'Tumu' : selectedStatus;
+      link.setAttribute('download', `urun_basvurulari_${statusText}_${date}.csv`);
+      
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success('Rapor başarıyla indirildi');
+    } catch (error: any) {
+      console.error('Rapor indirme hatası:', error);
+      toast.error('Rapor indirilemedi. Lütfen tekrar deneyin.');
+    } finally {
+      setIsExportingReport(false);
+    }
+  };
 
   // Verileri yükle
   useEffect(() => {
@@ -462,6 +551,7 @@ function ProductApplicationsPage() {
                 <option value="İncelemede">İncelemede</option>
                 <option value="Onaylandı">Onaylandı</option>
                 <option value="Revizyon">Revizyon</option>
+                <option value="Reddedildi">Reddedildi</option>
               </select>
               
               {/* Bildirim Butonu */}
@@ -623,9 +713,15 @@ function ProductApplicationsPage() {
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                <button className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-primary/40 dark:hover:bg-primary/30">
-                  <span className="material-symbols-outlined text-base">download</span>
-                  Rapor İndir
+                <button 
+                  onClick={handleDownloadReport}
+                  disabled={isExportingReport || filteredApplications.length === 0}
+                  className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-primary/40 dark:hover:bg-primary/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="material-symbols-outlined text-base">
+                    {isExportingReport ? 'sync' : 'download'}
+                  </span>
+                  {isExportingReport ? 'Rapor Hazırlanıyor...' : 'Rapor İndir'}
                 </button>
               </div>
             </div>
@@ -698,32 +794,36 @@ function ProductApplicationsPage() {
                             >
                               İncele
                             </button>
-                            {application.status === 'İncelemede' && (
-                              <button
-                                className="rounded-full border border-amber-500/40 bg-amber-50 dark:bg-amber-900/20 px-4 py-1 text-sm font-medium text-amber-700 dark:text-amber-300 transition-colors hover:bg-amber-100 dark:hover:bg-amber-900/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500"
-                                onClick={() => {
-                                  setSelectedApplicationForBelgeEksik(application);
-                                  setBelgeEksikModalOpen(true);
-                                }}
-                              >
-                                <span className="material-symbols-outlined text-sm align-middle mr-1">error</span>
-                                Eksik Belge
-                              </button>
+                            {application.status !== 'Reddedildi' && application.status !== 'Onaylandı' && (
+                              <>
+                                {application.status === 'İncelemede' && (
+                                  <button
+                                    className="rounded-full border border-amber-500/40 bg-amber-50 dark:bg-amber-900/20 px-4 py-1 text-sm font-medium text-amber-700 dark:text-amber-300 transition-colors hover:bg-amber-100 dark:hover:bg-amber-900/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500"
+                                    onClick={() => {
+                                      setSelectedApplicationForBelgeEksik(application);
+                                      setBelgeEksikModalOpen(true);
+                                    }}
+                                  >
+                                    <span className="material-symbols-outlined text-sm align-middle mr-1">error</span>
+                                    Eksik Belge
+                                  </button>
+                                )}
+                                <button
+                                  className="rounded-full bg-primary px-4 py-1 text-sm font-medium text-white transition-colors hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                                  onClick={() => handleApprove(application.id)}
+                                  disabled={isApproving === application.id || application.status === 'Onaylandı'}
+                                >
+                                  {isApproving === application.id ? 'Onaylanıyor...' : 'Onayla'}
+                                </button>
+                                <button
+                                  className="rounded-full bg-red-600 px-4 py-1 text-sm font-medium text-white transition-colors hover:bg-red-500 dark:hover:bg-red-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  onClick={() => setRejectedApplication(application)}
+                                  disabled={isRejecting === application.id || application.status === 'Reddedildi' || application.status === 'Onaylandı'}
+                                >
+                                  Reddet
+                                </button>
+                              </>
                             )}
-                            <button
-                              className="rounded-full bg-primary px-4 py-1 text-sm font-medium text-white transition-colors hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                              onClick={() => handleApprove(application.id)}
-                              disabled={isApproving === application.id || application.status === 'Onaylandı'}
-                            >
-                              {isApproving === application.id ? 'Onaylanıyor...' : 'Onayla'}
-                            </button>
-                            <button
-                              className="rounded-full bg-red-600 px-4 py-1 text-sm font-medium text-white transition-colors hover:bg-red-500 dark:hover:bg-red-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                              onClick={() => setRejectedApplication(application)}
-                              disabled={isRejecting === application.id || application.status === 'Reddedildi' || application.status === 'Onaylandı'}
-                            >
-                              Reddet
-                            </button>
                           </div>
                         </td>
                       </tr>

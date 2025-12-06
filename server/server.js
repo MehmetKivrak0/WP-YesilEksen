@@ -42,6 +42,16 @@ app.use(express.json()); // şu işe yarar: body parse etmek için
 app.use(express.urlencoded({ extended: true }));
 // şu işe yarar: form verilerini parse etmek için
 
+// Static dosya servisi - uploads klasörünü serve et
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+    setHeaders: (res, filePath) => {
+        // Resim dosyaları için CORS header'ı ekle
+        if (filePath.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)) {
+            res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+        }
+    }
+}));
+
 //Routes bu işe yarar:
 //  API'ların çalışması için bağlantı noktalarını oluşturmak için
 app.use('/api/auth', require('./src/routes/authRoutes.js'));

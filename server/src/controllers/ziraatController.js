@@ -5,6 +5,123 @@ const { createNotification } = require('../utils/notificationHelper');
 
 // Ziraat Admin Controller Fonksiyonları
 
+// Yardımcı fonksiyon: Ürün aktivite logu kaydet
+const logUrunActivity = async (client, options) => {
+    const {
+        kullanici_id,      // İşlemi yapan kullanıcı (admin)
+        urun_basvuru_id,   // İlgili ürün başvurusu ID (urun_basvurulari tablosu)
+        islem_tipi,        // 'onay', 'red', 'durum_degisikligi', 'belge_eksik'
+        eski_durum,        // Önceki durum
+        yeni_durum,        // Yeni durum
+        aciklama,          // Açıklama/not
+        ip_adresi,         // IP adresi (opsiyonel)
+        user_agent         // User agent (opsiyonel)
+    } = options;
+
+    try {
+        // 1. aktiviteler tablosuna kayıt ekle
+        const aktiviteBaslik = islem_tipi === 'onay'
+            ? 'Ürün başvurusu onaylandı'
+            : islem_tipi === 'red'
+                ? 'Ürün başvurusu reddedildi'
+                : islem_tipi === 'belge_eksik'
+                    ? 'Ürün başvurusu - Eksik belge bildirimi'
+                    : islem_tipi === 'durum_degisikligi'
+                        ? `Ürün durumu değiştirildi: ${eski_durum} → ${yeni_durum}`
+                        : 'Ürün işlemi';
+
+        await client.query(
+            `INSERT INTO aktiviteler 
+            (kullanici_id, tip, varlik_tipi, varlik_id, baslik, aciklama, ip_adresi, user_agent)
+            VALUES ($1, $2, 'urun_basvurusu', $3, $4, $5, $6, $7)`,
+            [
+                kullanici_id,
+                islem_tipi,
+                urun_basvuru_id,
+                aktiviteBaslik,
+                aciklama || '',
+                ip_adresi || null,
+                user_agent || null
+            ]
+        );
+
+        // 2. Eğer durum değişikliği varsa degisiklik_loglari tablosuna kayıt ekle
+        if (eski_durum && yeni_durum && eski_durum !== yeni_durum) {
+            try {
+                await client.query(
+                    `INSERT INTO degisiklik_loglari 
+                    (varlik_tipi, varlik_id, alan_adi, eski_deger, yeni_deger, sebep, degistiren_id)
+                    VALUES ('urun_basvurusu', $1, 'durum', $2, $3, $4, $5)`,
+                    [
+                        urun_basvuru_id,
+                        eski_durum,
+                        yeni_durum,
+                        aciklama || null,
+                        kullanici_id
+                    ]
+                );
+            } catch (degisiklikError) {
+                // degisiklik_loglari tablosu yoksa devam et (ana işlem zaten başarılı)
+                console.warn('⚠️ degisiklik_loglari tablosuna yazılamadı:', degisiklikError.message);
+            }
+        }
+
+        // 3. detayli_aktiviteler tablosuna kayıt ekle (Sanayi/Ziraat dashboard'ları için)
+        if (islem_tipi === 'onay' || islem_tipi === 'red' || islem_tipi === 'belge_eksik') {
+            const kullaniciResult = await client.query(
+                `SELECT rol FROM kullanicilar WHERE id = $1`,
+                [kullanici_id]
+            );
+            const rol = kullaniciResult.rows.length > 0 ? kullaniciResult.rows[0].rol : null;
+
+            // Başvuruyu yapan kullanıcıyı bul (etkilenen kullanıcı)
+            let etkilenen_kullanici_id = null;
+            if (urun_basvuru_id) {
+                const basvuruResult = await client.query(
+                    `SELECT c.kullanici_id 
+                     FROM urun_basvurulari ub
+                     JOIN ciftlikler c ON ub.ciftlik_id = c.id
+                     WHERE ub.id = $1`,
+                    [urun_basvuru_id]
+                );
+                etkilenen_kullanici_id = basvuruResult.rows.length > 0
+                    ? basvuruResult.rows[0].kullanici_id
+                    : null;
+            }
+
+            await client.query(
+                `INSERT INTO detayli_aktiviteler 
+                (kategori, kullanici_id, rol, islem_tipi, hedef_tipi, hedef_id, onceki_durum, sonraki_durum, baslik, aciklama, etkilenen_kullanici_id, ip_adresi, user_agent)
+                VALUES ('urun', $1, $2, $3, 'urun_basvurusu', $4, $5, $6, $7, $8, $9, $10, $11)`,
+                [
+                    kullanici_id,
+                    rol,
+                    islem_tipi,
+                    urun_basvuru_id,
+                    eski_durum,
+                    yeni_durum,
+                    aktiviteBaslik,
+                    aciklama || '',
+                    etkilenen_kullanici_id,
+                    ip_adresi || null,
+                    user_agent || null
+                ]
+            );
+        }
+
+        if (process.env.NODE_ENV === 'development') {
+            console.log('✅ Ürün aktivite logu kaydedildi:', {
+                islem_tipi,
+                urun_basvuru_id,
+                durum: `${eski_durum} → ${yeni_durum}`
+            });
+        }
+    } catch (error) {
+        // Log hatası kritik değil, sadece console'a yaz
+        console.error('⚠️ Ürün aktivite log kayıt hatası (işlem devam ediyor):', error.message);
+    }
+};
+
 // Yardımcı fonksiyon: Çiftlik aktivite logu kaydet
 const logCiftlikActivity = async (client, options) => {
     const {
@@ -295,10 +412,10 @@ const getProductApplications = async (req, res) => {
             });
         }
 
-        if (isNaN(limit) || limit < 1 || limit > 100) {
+        if (isNaN(limit) || limit < 1 || limit > 1000) {
             return res.status(400).json({
                 success: false,
-                message: 'Geçersiz limit değeri (1-100 arası olmalı)'
+                message: 'Geçersiz limit değeri (1-1000 arası olmalı)'
             });
         }
 
@@ -376,6 +493,8 @@ const getProductApplications = async (req, res) => {
                 SELECT 
                     COALESCE(bt.ad, b.ad, 'Belge') as name,
                     CASE 
+                        WHEN u.durum = 'onaylandi' THEN 'Onaylandı'
+                        WHEN u.durum = 'reddedildi' THEN 'Reddedildi'
                         WHEN b.durum = 'onaylandi' THEN 'Onaylandı'
                         WHEN b.durum = 'reddedildi' THEN 'Reddedildi'
                         WHEN b.durum = 'eksik' THEN 'Eksik'
@@ -399,7 +518,11 @@ const getProductApplications = async (req, res) => {
                         WHEN ur.ana_resim = TRUE THEN 'Ürün Fotoğrafı'
                         ELSE 'Ek Fotoğraf'
                     END as name,
-                    'Beklemede' as status,
+                    CASE 
+                        WHEN u.durum = 'onaylandi' THEN 'Onaylandı'
+                        WHEN u.durum = 'reddedildi' THEN 'Reddedildi'
+                        ELSE 'Beklemede'
+                    END as status,
                     ur.resim_url as url,
                     ur.id::text as belgeId,
                     '' as farmerNote,
@@ -469,10 +592,10 @@ const getFarmApplications = async (req, res) => {
             });
         }
 
-        if (isNaN(limit) || limit < 1 || limit > 100) {
+        if (isNaN(limit) || limit < 1 || limit > 1000) {
             return res.status(400).json({
                 success: false,
-                message: 'Geçersiz limit değeri (1-100 arası olmalı)'
+                message: 'Geçersiz limit değeri (1-1000 arası olmalı)'
             });
         }
 
@@ -898,6 +1021,74 @@ const approveProduct = async (req, res) => {
             onay_tarihi: updateResult.rows[0].onay_tarihi
         });
 
+        // Ürün onaylandığında, urunler tablosundaki ürünün durumunu da "aktif" olarak güncelle
+        // Böylece ürün urunlerim.tsx sayfasında görünecek
+        let urunId = basvuru.urun_id;
+        
+        // Eğer urun_id yoksa, urun_adi ve ciftlik_id ile urunler tablosunda ürünü bul
+        if (!urunId) {
+            const urunBulResult = await client.query(
+                `SELECT id FROM urunler 
+                 WHERE ciftlik_id = $1::uuid 
+                   AND (baslik = $2 OR ad = $2)
+                   AND durum = 'onay_bekliyor'
+                 ORDER BY olusturma DESC
+                 LIMIT 1`,
+                [basvuru.ciftlik_id, basvuru.urun_adi]
+            );
+            
+            if (urunBulResult.rows.length > 0) {
+                urunId = urunBulResult.rows[0].id;
+                // Bulunan urun_id'yi urun_basvurulari tablosuna da kaydet
+                await client.query(
+                    `UPDATE urun_basvurulari 
+                     SET urun_id = $1::uuid 
+                     WHERE id = $2::uuid`,
+                    [urunId, trimmedId]
+                );
+                console.log(`✅ [URUN ONAY] Ürün ID bulundu ve başvuruya bağlandı:`, {
+                    urun_id: urunId,
+                    basvuru_id: trimmedId
+                });
+            }
+        }
+
+        // urun_id varsa veya bulunduysa, urunler tablosunu güncelle
+        if (urunId) {
+            const urunUpdateResult = await client.query(
+                `UPDATE urunler
+                 SET durum = 'aktif',
+                     guncelleme = CURRENT_TIMESTAMP
+                 WHERE id = $1::uuid`,
+                [urunId]
+            );
+
+            if (urunUpdateResult.rowCount === 0) {
+                console.warn(`⚠️ [URUN ONAY] Ürün bulunamadı veya güncellenemedi:`, {
+                    urun_id: urunId,
+                    basvuru_id: trimmedId
+                });
+            } else {
+                console.log(`✅ [URUN ONAY] Ürün durumu "aktif" olarak güncellendi:`, {
+                    urun_id: urunId,
+                    basvuru_id: trimmedId,
+                    guncellenen_urun_sayisi: urunUpdateResult.rowCount
+                });
+            }
+        } else {
+            // urun_id bulunamadıysa hata ver (transaction rollback olacak)
+            await client.query('ROLLBACK');
+            console.error(`❌ [URUN ONAY] Ürün ID bulunamadı, urunler tablosu güncellenemedi:`, {
+                basvuru_id: trimmedId,
+                ciftlik_id: basvuru.ciftlik_id,
+                urun_adi: basvuru.urun_adi
+            });
+            return res.status(500).json({
+                success: false,
+                message: 'Ürün bulunamadı, başvuru onaylanamadı'
+            });
+        }
+
         // Ürün onaylandığında, bu başvuruya ait TÜM belgelerin durumunu "onaylandi" yap
         const belgeUpdateResult = await client.query(
             `UPDATE belgeler
@@ -918,6 +1109,28 @@ const approveProduct = async (req, res) => {
 
         // Transaction'ı commit et
         await client.query('COMMIT');
+
+        // Log kaydı oluştur (COMMIT'ten SONRA - transaction dışında)
+        try {
+            const logClient = await pool.connect();
+            try {
+                await logUrunActivity(logClient, {
+                    kullanici_id: adminId,
+                    urun_basvuru_id: trimmedId,
+                    islem_tipi: 'onay',
+                    eski_durum: mevcutDurum,
+                    yeni_durum: 'onaylandi',
+                    aciklama: note || 'Ürün başvurusu onaylandı',
+                    ip_adresi: req.ip,
+                    user_agent: req.get('user-agent')
+                });
+                console.log(`✅ [URUN ONAY] Log kaydı oluşturuldu`);
+            } finally {
+                logClient.release();
+            }
+        } catch (logError) {
+            console.error('⚠️ [URUN ONAY] Log kaydı hatası (ana işlem başarılı):', logError.message);
+        }
 
         // Bildirim oluştur - Çiftçiye ürün onaylandı bildirimi gönder (transaction dışında)
         try {
@@ -973,27 +1186,59 @@ const approveProduct = async (req, res) => {
 
 // Reject Product - POST /api/ziraat/products/reject/:id
 const rejectProduct = async (req, res) => {
+    const client = await pool.connect();
     try {
-        const { id } = req.params;
-        const { reason } = req.body;
+        await client.query('BEGIN');
 
-        if (!reason) {
+        const { id } = req.params;
+        const { reason } = req.body || {};
+
+        // ID validation
+        const trimmedId = String(id).trim();
+        if (!trimmedId) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+                success: false,
+                message: 'Geçersiz başvuru ID\'si'
+            });
+        }
+
+        // Reason validation
+        if (!reason || !reason.trim()) {
+            await client.query('ROLLBACK');
             return res.status(400).json({
                 success: false,
                 message: 'Red nedeni zorunludur'
             });
         }
 
+        // Admin ID validation
+        const adminId = req.user?.id;
+        if (!adminId) {
+            await client.query('ROLLBACK');
+            return res.status(401).json({
+                success: false,
+                message: 'Yetki hatası: Admin bilgisi bulunamadı'
+            });
+        }
+
+        console.log(`🔄 [URUN RED] Reddetme işlemi başlatılıyor:`, {
+            basvuru_id: trimmedId,
+            admin_id: adminId
+        });
+
         // Ürün başvurusunu kontrol et ve çiftçi bilgilerini al
-        const checkResult = await pool.query(
+        const checkResult = await client.query(
             `SELECT ub.id, ub.durum, ub.urun_adi, ub.ciftlik_id, c.kullanici_id
              FROM urun_basvurulari ub
              JOIN ciftlikler c ON ub.ciftlik_id = c.id
-             WHERE ub.id = $1`,
-            [id]
+             WHERE ub.id = $1::uuid`,
+            [trimmedId]
         );
 
         if (checkResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+            console.error(`❌ [URUN RED] Başvuru bulunamadı:`, trimmedId);
             return res.status(404).json({
                 success: false,
                 message: 'Ürün başvurusu bulunamadı'
@@ -1002,36 +1247,136 @@ const rejectProduct = async (req, res) => {
 
         const basvuru = checkResult.rows[0];
         const ciftciKullaniciId = basvuru.kullanici_id;
+        const mevcutDurum = basvuru.durum;
+
+        // Eğer zaten reddedilmişse
+        if (mevcutDurum === 'reddedildi') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+                success: false,
+                message: 'Bu ürün başvurusu zaten reddedilmiş'
+            });
+        }
 
         // Durumu güncelle ve red nedeni ekle
-        await pool.query(
-            'UPDATE urun_basvurulari SET durum = $1, guncelleme = NOW(), red_nedeni = $2, inceleyen_id = $3 WHERE id = $4',
-            ['reddedildi', reason, req.user.id, id]
+        const updateResult = await client.query(
+            `UPDATE urun_basvurulari 
+             SET durum = 'reddedildi', 
+                 guncelleme = CURRENT_TIMESTAMP, 
+                 red_nedeni = $1, 
+                 inceleyen_id = $2::uuid 
+             WHERE id = $3::uuid
+             RETURNING id, durum`,
+            [reason.trim(), adminId, trimmedId]
         );
 
-        // Bildirim oluştur - Çiftçiye ürün reddedildi bildirimi gönder
+        if (updateResult.rowCount === 0) {
+            await client.query('ROLLBACK');
+            console.error(`❌ [URUN RED] Güncelleme başarısız:`, trimmedId);
+            return res.status(500).json({
+                success: false,
+                message: 'Başvuru durumu güncellenemedi'
+            });
+        }
+
+        console.log(`✅ [URUN RED] Başvuru durumu güncellendi:`, {
+            basvuru_id: trimmedId,
+            eski_durum: mevcutDurum,
+            yeni_durum: updateResult.rows[0].durum
+        });
+
+        // Ürün reddedildiğinde, bu başvuruya ait TÜM belgelerin durumunu "reddedildi" yap
+        const belgeUpdateResult = await client.query(
+            `UPDATE belgeler
+             SET durum = 'reddedildi',
+                 guncelleme = CURRENT_TIMESTAMP,
+                 inceleme_tarihi = CURRENT_TIMESTAMP,
+                 inceleyen_id = $1::uuid,
+                 red_nedeni = $2
+             WHERE basvuru_id = $3::uuid 
+               AND basvuru_tipi = 'urun_basvurusu'`,
+            [adminId, reason.trim(), trimmedId]
+        );
+
+        console.log(`✅ [URUN RED] ${belgeUpdateResult.rowCount} belge durumu "reddedildi" olarak güncellendi:`, {
+            basvuru_id: trimmedId,
+            guncellenen_belge_sayisi: belgeUpdateResult.rowCount
+        });
+
+        // Transaction'ı commit et
+        await client.query('COMMIT');
+
+        // Log kaydı oluştur (COMMIT'ten SONRA - transaction dışında)
+        try {
+            const logClient = await pool.connect();
+            try {
+                await logUrunActivity(logClient, {
+                    kullanici_id: adminId,
+                    urun_basvuru_id: trimmedId,
+                    islem_tipi: 'red',
+                    eski_durum: mevcutDurum,
+                    yeni_durum: 'reddedildi',
+                    aciklama: reason.trim() || 'Ürün başvurusu reddedildi',
+                    ip_adresi: req.ip,
+                    user_agent: req.get('user-agent')
+                });
+                console.log(`✅ [URUN RED] Log kaydı oluşturuldu`);
+            } finally {
+                logClient.release();
+            }
+        } catch (logError) {
+            console.error('⚠️ [URUN RED] Log kaydı hatası (ana işlem başarılı):', logError.message);
+        }
+
+        // Bildirim oluştur - Çiftçiye ürün reddedildi bildirimi gönder (transaction dışında)
         try {
             await createNotification({
                 kullanici_id: ciftciKullaniciId,
                 bildirim_tipi_kod: 'BASVURU',
                 baslik: 'Ürün Başvurusu Reddedildi',
-                mesaj: `"${basvuru.urun_adi}" adlı ürün başvurunuz reddedildi.\n\nRed Nedeni: ${reason}\n\nLütfen eksiklikleri tamamlayıp tekrar başvurunuzu yapabilirsiniz.`,
+                mesaj: `"${basvuru.urun_adi}" adlı ürün başvurunuz reddedildi.\n\nRed Nedeni: ${reason.trim()}\n\nLütfen eksiklikleri tamamlayıp tekrar başvurunuzu yapabilirsiniz.`,
                 link: `/ciftlik/urunler`
             });
+            console.log(`✅ [URUN RED] Bildirim gönderildi:`, ciftciKullaniciId);
         } catch (notificationError) {
-            console.error('⚠️ Bildirim oluşturma hatası (işlem başarılı):', notificationError);
+            console.error('⚠️ [URUN RED] Bildirim oluşturma hatası (işlem başarılı):', notificationError);
+            // Bildirim hatası işlemi başarısız yapmaz
         }
 
         res.json({
             success: true,
-            message: 'Ürün başvurusu reddedildi'
+            message: 'Ürün başvurusu başarıyla reddedildi'
         });
     } catch (error) {
-        console.error('Reject product hatası:', error);
+        await client.query('ROLLBACK');
+        console.error('❌ [URUN RED] İşlem hatası:', {
+            message: error.message,
+            stack: error.stack,
+            code: error.code,
+            detail: error.detail,
+            basvuru_id: req.params?.id
+        });
+        
+        let errorMessage = 'Ürün reddetme işlemi başarısız';
+        if (error.code === '23505') {
+            errorMessage = 'Bu işlem zaten gerçekleştirilmiş';
+        } else if (error.code === '23503') {
+            errorMessage = 'Bağlantı hatası: İlişkili kayıt bulunamadı';
+        } else if (error.message) {
+            errorMessage = `Hata: ${error.message}`;
+        }
+
         res.status(500).json({
             success: false,
-            message: 'Ürün reddetme işlemi başarısız'
+            message: errorMessage,
+            error: process.env.NODE_ENV === 'development' ? {
+                message: error.message,
+                code: error.code,
+                detail: error.detail
+            } : undefined
         });
+    } finally {
+        client.release();
     }
 };
 
@@ -1961,6 +2306,32 @@ const sendProductBelgeEksikMessage = async (req, res) => {
         await client.query('COMMIT');
         console.log(`✅ [URUN BELGE EKSIK] İşlem başarılı!`);
 
+        // Log kaydı oluştur (COMMIT'ten SONRA - transaction dışında)
+        try {
+            const logClient = await pool.connect();
+            try {
+                const belgeListesi = belgeIsimleri.length > 0 
+                    ? belgeIsimleri.join(', ')
+                    : `${belgeMessages.length} belge`;
+                
+                await logUrunActivity(logClient, {
+                    kullanici_id: adminId,
+                    urun_basvuru_id: id,
+                    islem_tipi: 'belge_eksik',
+                    eski_durum: basvuru.durum,
+                    yeni_durum: 'belge_eksik',
+                    aciklama: `Ürün başvurusu "Belge Eksik" durumuna alındı. ${belgeMessages.length} belge için mesaj gönderildi. Belgeler: ${belgeListesi}`,
+                    ip_adresi: req.ip,
+                    user_agent: req.get('user-agent')
+                });
+                console.log(`✅ [URUN BELGE EKSIK] Log kaydı oluşturuldu`);
+            } finally {
+                logClient.release();
+            }
+        } catch (logError) {
+            console.error('⚠️ [URUN BELGE EKSIK] Log kaydı hatası (ana işlem başarılı):', logError.message);
+        }
+
         // Bildirim oluştur - Çiftçiye ürün belge eksik bildirimi gönder
         try {
             const belgeListesi = belgeIsimleri.length > 0 
@@ -2158,10 +2529,10 @@ const getRegisteredFarmers = async (req, res) => {
             });
         }
 
-        if (isNaN(limit) || limit < 1 || limit > 100) {
+        if (isNaN(limit) || limit < 1 || limit > 1000) {
             return res.status(400).json({
                 success: false,
-                message: 'Geçersiz limit değeri (1-100 arası olmalı)'
+                message: 'Geçersiz limit değeri (1-1000 arası olmalı)'
             });
         }
 
@@ -2238,7 +2609,17 @@ const getFarmerDetails = async (req, res) => {
     try {
         const { id } = req.params; // kullanici_id veya ciftlik_id
         
-        console.log(`🔍 [FARMER DETAILS] İstek alındı - ID: ${id}, Type: ${typeof id}`);
+        // ID validation
+        if (!id || typeof id !== 'string' || id.trim() === '') {
+            return res.status(400).json({
+                success: false,
+                message: 'Geçersiz çiftçi ID\'si'
+            });
+        }
+
+        const trimmedId = id.trim();
+        
+        console.log(`🔍 [FARMER DETAILS] İstek alındı - ID: ${trimmedId}, Type: ${typeof trimmedId}`);
 
         // Önce kullanıcı ID'si ile çiftliği bul
         const farmerQuery = `
@@ -2251,15 +2632,17 @@ const getFarmerDetails = async (req, res) => {
                 c.ad as "farmName",
                 c.adres as address,
                 c.durum as status,
-                c.olusturma as "registrationDate",
-                c.aciklama as description
+                c.olusturma as "registrationDate"
             FROM kullanicilar k
             JOIN ciftlikler c ON c.kullanici_id = k.id
-            WHERE (k.id = $1::uuid OR c.id = $1::uuid) AND c.durum = 'aktif' AND c.silinme IS NULL
+            WHERE (k.id = $1::uuid OR c.id = $1::uuid) 
+              AND c.durum = 'aktif' 
+              AND c.silinme IS NULL
+              AND k.silinme IS NULL
             LIMIT 1
         `;
 
-        const farmerResult = await pool.query(farmerQuery, [id]);
+        const farmerResult = await pool.query(farmerQuery, [trimmedId]);
 
         if (farmerResult.rows.length === 0) {
             return res.status(404).json({
@@ -2270,8 +2653,18 @@ const getFarmerDetails = async (req, res) => {
 
         const farmer = farmerResult.rows[0];
         const ciftlikId = farmer.ciftlik_id;
+        const kullaniciId = farmer.kullanici_id;
 
-        // Belgeleri al - hem ciftlik_id hem de basvuru_id ile bağlı belgeleri getir
+        // Null kontrolü
+        if (!ciftlikId || !kullaniciId) {
+            return res.status(500).json({
+                success: false,
+                message: 'Çiftçi bilgileri eksik'
+            });
+        }
+
+        // Belgeleri al - sadece basvuru_id ile bağlı belgeleri getir
+        // NOT: belgeler tablosunda ciftlik_id kolonu olmayabilir, sadece basvuru_id kullanıyoruz
         const documentsQuery = `
             SELECT 
                 b.id as "belgeId",
@@ -2285,28 +2678,36 @@ const getFarmerDetails = async (req, res) => {
                 bt.kod as "belgeKodu"
             FROM belgeler b
             LEFT JOIN belge_turleri bt ON b.belge_turu_id = bt.id
-            WHERE (b.ciftlik_id = $1::uuid OR b.basvuru_id IN (
-                SELECT id FROM ciftlik_basvurulari WHERE kullanici_id = $2::uuid
-            )) AND b.basvuru_tipi = 'ciftlik_basvurusu'
+            WHERE b.basvuru_id IN (
+                SELECT id FROM ciftlik_basvurulari WHERE kullanici_id = $1::uuid
+            ) AND b.basvuru_tipi = 'ciftlik_basvurusu'
             ORDER BY b.olusturma DESC
         `;
 
-        const documentsResult = await pool.query(documentsQuery, [ciftlikId, farmer.kullanici_id]);
-
-        // Belgeler için URL oluştur - sadece path döndür (frontend'de base URL ile birleştirilecek)
-        const documentsWithUrl = documentsResult.rows.map(doc => {
-            let url = null;
-            if (doc.dosya_yolu) {
-                // Dosya yolundaki her segmenti ayrı ayrı encode et (slash'lar korunur)
-                const normalizedPath = doc.dosya_yolu.split('/').map(part => encodeURIComponent(part)).join('/');
-                // Sadece path döndür, /api ekleme (frontend'de ekleyecek)
-                url = `/documents/file/${normalizedPath}`;
-            }
-            return {
-                ...doc,
-                url
-            };
-        });
+        // Belgeler sorgusunu çalıştır - hata durumunda boş array döndür
+        let documentsWithUrl = [];
+        try {
+            const documentsResult = await pool.query(documentsQuery, [kullaniciId]);
+            
+            // Belgeler için URL oluştur - sadece path döndür (frontend'de base URL ile birleştirilecek)
+            documentsWithUrl = documentsResult.rows.map(doc => {
+                let url = null;
+                if (doc.dosya_yolu) {
+                    // Dosya yolundaki her segmenti ayrı ayrı encode et (slash'lar korunur)
+                    const normalizedPath = doc.dosya_yolu.split('/').map(part => encodeURIComponent(part)).join('/');
+                    // Sadece path döndür, /api ekleme (frontend'de ekleyecek)
+                    url = `/documents/file/${normalizedPath}`;
+                }
+                return {
+                    ...doc,
+                    url
+                };
+            });
+        } catch (docError) {
+            console.warn('⚠️ [FARMER DETAILS] Belgeler yüklenirken hata (devam ediliyor):', docError);
+            // Belgeler yüklenemese bile çiftçi bilgilerini döndür
+            documentsWithUrl = [];
+        }
 
         res.json({
             success: true,
@@ -2317,16 +2718,37 @@ const getFarmerDetails = async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Farmer details hatası:', error);
+        console.error('❌ [FARMER DETAILS] Çiftçi detayları hatası:', error);
         console.error('Hata detayı:', {
             message: error.message,
             stack: error.stack,
-            query: error.query || 'N/A'
+            query: error.query || 'N/A',
+            code: error.code,
+            detail: error.detail,
+            hint: error.hint,
+            id: req.params?.id
         });
+        
+        let errorMessage = 'Çiftçi detayları alınamadı';
+        if (error.code === '22P02') {
+            errorMessage = 'Geçersiz UUID formatı';
+        } else if (error.code === '42703') {
+            errorMessage = 'Veritabanı şema hatası: Kolon bulunamadı';
+        } else if (error.code === '42P01') {
+            errorMessage = 'Veritabanı şema hatası: Tablo bulunamadı';
+        } else if (error.message) {
+            errorMessage = `Hata: ${error.message}`;
+        }
+
         res.status(500).json({
             success: false,
-            message: 'Çiftçi detayları alınamadı',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            message: errorMessage,
+            error: process.env.NODE_ENV === 'development' ? {
+                message: error.message,
+                code: error.code,
+                detail: error.detail,
+                hint: error.hint
+            } : undefined
         });
     }
 };
@@ -2336,7 +2758,12 @@ const getDashboardProducts = async (req, res) => {
     try {
         const { search } = req.query;
 
-        let whereClause = "WHERE u.durum IN ('stokta', 'aktif') AND u.silinme IS NULL";
+        // Onaylanan ürünler çiftlik durumundan bağımsız gösterilsin
+        // WHERE koşulu: (ürün başvurusu onaylandı) VEYA (çiftlik aktif VE ürün durumu stokta/aktif)
+        let whereClause = `WHERE u.silinme IS NULL AND (
+            ub.durum = 'onaylandi' OR 
+            (c.durum = 'aktif' AND u.durum IN ('stokta', 'aktif'))
+        )`;
         const params = [];
         let paramIndex = 1;
 
@@ -2359,6 +2786,7 @@ const getDashboardProducts = async (req, res) => {
             JOIN ciftlikler c ON u.ciftlik_id = c.id
             JOIN kullanicilar k ON c.kullanici_id = k.id
             LEFT JOIN urun_kategorileri uk ON u.kategori_id = uk.id
+            LEFT JOIN urun_basvurulari ub ON u.id = ub.urun_id
             ${whereClause}
             ORDER BY u.olusturma DESC
             LIMIT 50
@@ -2401,10 +2829,10 @@ const getActivityLog = async (req, res) => {
             });
         }
 
-        if (isNaN(limit) || limit < 1 || limit > 100) {
+        if (isNaN(limit) || limit < 1 || limit > 1000) {
             return res.status(400).json({
                 success: false,
-                message: 'Geçersiz limit değeri (1-100 arası olmalı)'
+                message: 'Geçersiz limit değeri (1-1000 arası olmalı)'
             });
         }
 

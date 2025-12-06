@@ -1,6 +1,6 @@
 export type DocumentStatus = 'Onaylandı' | 'Eksik' | 'Beklemede' | 'Reddedildi' | 'Güncel Belge';
 
-export type ProductStatus = 'Onaylandı' | 'İncelemede' | 'Revizyon';
+export type ProductStatus = 'Onaylandı' | 'İncelemede' | 'Revizyon' | 'Reddedildi';
 
 export type ProductContact = {
   name: string;

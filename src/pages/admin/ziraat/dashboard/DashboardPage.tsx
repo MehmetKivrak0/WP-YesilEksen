@@ -18,6 +18,9 @@ function DashboardPage() {
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [productApplications, setProductApplications] = useState<ProductApplication[]>([]);
   const [farmApplications, setFarmApplications] = useState<FarmApplication[]>([]);
+  // Tüm başvuruları tutmak için (istatistikler için)
+  const [allProductApplications, setAllProductApplications] = useState<ProductApplication[]>([]);
+  const [allFarmApplications, setAllFarmApplications] = useState<FarmApplication[]>([]);
   const [registeredFarmersData, setRegisteredFarmersData] = useState<any[]>([]);
   const [dashboardProductsData, setDashboardProductsData] = useState<any[]>([]);
   const [activityLogData, setActivityLogData] = useState<any[]>([]);
@@ -71,7 +74,7 @@ function DashboardPage() {
     setError(null);
     try {
       // Paralel olarak tüm verileri yükle - her isteği ayrı ayrı yakala
-      const [statsRes, productsRes, farmsRes, farmersRes, dashboardProductsRes, activityRes] = await Promise.all([
+      const [statsRes, productsRes, farmsRes, allProductsRes, allFarmsRes, farmersRes, dashboardProductsRes, activityRes] = await Promise.all([
         ziraatService.getDashboardStats().catch((err) => {
           console.error('Dashboard stats hatası:', err);
           return { success: false, stats: { productSummary: { pending: 0, approved: 0, revision: 0 }, farmSummary: { newApplications: 0, inspections: 0, missingDocuments: 0, rejected: 0, totalApplications: 0, approved: 0 }, totalFarmers: 0, totalProducts: 0 } };
@@ -82,6 +85,16 @@ function DashboardPage() {
         }),
         ziraatService.getFarmApplications({ limit: 3 }).catch((err) => {
           console.error('Farm applications hatası:', err);
+          return { success: false, applications: [], pagination: {} };
+        }),
+        // İstatistikler için tüm ürün başvurularını çek
+        ziraatService.getProductApplications({ limit: 1000 }).catch((err) => {
+          console.error('All product applications hatası:', err);
+          return { success: false, applications: [], pagination: {} };
+        }),
+        // İstatistikler için tüm çiftlik başvurularını çek
+        ziraatService.getFarmApplications({ limit: 1000 }).catch((err) => {
+          console.error('All farm applications hatası:', err);
           return { success: false, applications: [], pagination: {} };
         }),
         ziraatService.getRegisteredFarmers().catch((err) => {
@@ -103,6 +116,9 @@ function DashboardPage() {
       }
       setProductApplications(productsRes.applications || []);
       setFarmApplications(farmsRes.applications || []);
+      // İstatistikler için tüm başvuruları kaydet
+      setAllProductApplications(allProductsRes.applications || []);
+      setAllFarmApplications(allFarmsRes.applications || []);
       
       // API'den gelen çiftçileri frontend formatına map et
       if (farmersRes.success && farmersRes.farmers && farmersRes.farmers.length > 0) {
@@ -190,16 +206,54 @@ function DashboardPage() {
     return status;
   };
 
+  // Ürün başvuru istatistiklerini gerçek verilerden hesapla
   const productApprovalStats = [
-    { label: 'Bekleyen', value: dashboardStats?.productSummary?.pending ?? 0 },
-    { label: 'Onaylanan', value: dashboardStats?.productSummary?.approved ?? 0 },
-    { label: 'Reddedilen', value: dashboardStats?.productSummary?.revision ?? 0 },
+    { 
+      label: 'Bekleyen', 
+      value: allProductApplications.filter(app => {
+        const status = app.status?.toLowerCase() || '';
+        return status === 'incelemede' || status === 'beklemede' || status === 'ilk_inceleme';
+      }).length
+    },
+    { 
+      label: 'Onaylanan', 
+      value: allProductApplications.filter(app => {
+        const status = app.status?.toLowerCase() || '';
+        return status === 'onaylandi' || status === 'onaylandı';
+      }).length
+    },
+    { 
+      label: 'Revizyon', 
+      value: allProductApplications.filter(app => {
+        const status = app.status?.toLowerCase() || '';
+        return status === 'revizyon';
+      }).length
+    },
   ];
 
+  // Çiftlik başvuru istatistiklerini gerçek verilerden hesapla
   const farmApprovalStats = [
-    { label: 'Yeni Başvuru', value: dashboardStats?.farmSummary?.newApplications ?? 0 },
-    { label: 'Onaylanan Çiftlik', value: dashboardStats?.farmSummary?.approved ?? 0 },
-    { label: 'Eksik Belge', value: dashboardStats?.farmSummary?.missingDocuments ?? 0 },
+    { 
+      label: 'Yeni Başvuru', 
+      value: allFarmApplications.filter(app => {
+        const status = app.status?.toLowerCase() || '';
+        return status === 'beklemede' || status === 'incelemede' || status === 'ilk_inceleme';
+      }).length
+    },
+    { 
+      label: 'Onaylanan Çiftlik', 
+      value: allFarmApplications.filter(app => {
+        const status = app.status?.toLowerCase() || '';
+        return status === 'onaylandi' || status === 'onaylandı';
+      }).length
+    },
+    { 
+      label: 'Eksik Belge', 
+      value: allFarmApplications.filter(app => {
+        const status = app.status?.toLowerCase() || '';
+        return status === 'belge_eksik' || status === 'eksik_belge' || status === 'belge eksik' || status === 'eksik belge';
+      }).length
+    },
   ];
 
   const handleProductRowClick = (row: any) => {
@@ -274,10 +328,7 @@ function DashboardPage() {
             <div className="flex items-center gap-4">
               <div
                 className="relative"
-                onMouseEnter={() => {
-                  setIsNotificationMenuOpen(true);
-                  refreshNotifications();
-                }}
+                onMouseEnter={() => setIsNotificationMenuOpen(true)}
                 onMouseLeave={() => setIsNotificationMenuOpen(false)}
               >
                 <button 
@@ -285,10 +336,12 @@ function DashboardPage() {
                   type="button"
                   onClick={() => {
                     setIsNotificationMenuOpen((prev) => {
-                      if (!prev) {
+                      const newState = !prev;
+                      // Sadece menü açılırken bildirimleri yenile
+                      if (newState) {
                         refreshNotifications();
                       }
-                      return !prev;
+                      return newState;
                     });
                   }}
                 >

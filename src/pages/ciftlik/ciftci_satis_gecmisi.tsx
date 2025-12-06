@@ -1,123 +1,72 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import CftNavbar from '../../components/cftnavbar';
+import { ciftciService } from '../../services/ciftciService';
+import { useToast } from '../../context/ToastContext';
+
+interface Satis {
+  id: string;
+  urun: string;
+  miktar: string;
+  fiyat: string;
+  birimFiyat: string;
+  tarih: string;
+  durum: string;
+  durumClass: string;
+  alici: string;
+  siparisNo: string;
+}
 
 function CiftciSatisGecmisi() {
+  const toast = useToast();
   const [selectedFilter, setSelectedFilter] = useState<'tumu' | 'tamamlandi' | 'kargoda' | 'hazirlaniyor'>('tumu');
-
-  // Örnek veriler - gerçek uygulamada API'den gelecek
-  const satislar = [
-    {
-      id: 1,
-      urun: 'Mısır Sapı',
-      miktar: '10 Ton',
-      fiyat: '2.800 ₺',
-      birimFiyat: '280 ₺ / ton',
-      tarih: '2024-01-15',
-      durum: 'Tamamlandı',
-      durumClass: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-      alici: 'BioEnerji A.Ş.',
-      siparisNo: 'SP-2024-001',
-    },
-    {
-      id: 2,
-      urun: 'Buğday Samanı',
-      miktar: '20 Ton',
-      fiyat: '6.400 ₺',
-      birimFiyat: '320 ₺ / ton',
-      tarih: '2024-01-12',
-      durum: 'Tamamlandı',
-      durumClass: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-      alici: 'Organik Gübre Sanayi',
-      siparisNo: 'SP-2024-002',
-    },
-    {
-      id: 3,
-      urun: 'Ayçiçeği Sapı',
-      miktar: '5 Ton',
-      fiyat: '1.900 ₺',
-      birimFiyat: '380 ₺ / ton',
-      tarih: '2024-01-10',
-      durum: 'Kargoda',
-      durumClass: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-      alici: 'Yeşil Yakıtlar Ltd.',
-      siparisNo: 'SP-2024-003',
-    },
-    {
-      id: 4,
-      urun: 'Organik Kompost',
-      miktar: '8 Ton',
-      fiyat: '4.400 ₺',
-      birimFiyat: '550 ₺ / ton',
-      tarih: '2024-01-08',
-      durum: 'Hazırlanıyor',
-      durumClass: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-      alici: 'Doğa Tarım Ürünleri',
-      siparisNo: 'SP-2024-004',
-    },
-    {
-      id: 5,
-      urun: 'Hayvansal Gübre',
-      miktar: '15 Ton',
-      fiyat: '6.750 ₺',
-      birimFiyat: '450 ₺ / ton',
-      tarih: '2024-01-05',
-      durum: 'Tamamlandı',
-      durumClass: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-      alici: 'BioEnerji A.Ş.',
-      siparisNo: 'SP-2024-005',
-    },
-    {
-      id: 6,
-      urun: 'Pamuk Atığı',
-      miktar: '12 Ton',
-      fiyat: '5.040 ₺',
-      birimFiyat: '420 ₺ / ton',
-      tarih: '2024-01-03',
-      durum: 'Tamamlandı',
-      durumClass: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-      alici: 'Sönmez Tekstil',
-      siparisNo: 'SP-2024-006',
-    },
-    {
-      id: 7,
-      urun: 'Zeytin Karasuyu',
-      miktar: '5 m³',
-      fiyat: '3.400 ₺',
-      birimFiyat: '680 ₺ / m³',
-      tarih: '2024-01-01',
-      durum: 'Tamamlandı',
-      durumClass: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-      alici: 'Organik Gübre Sanayi',
-      siparisNo: 'SP-2024-007',
-    },
-    {
-      id: 8,
-      urun: 'Mısır Sapı',
-      miktar: '25 Ton',
-      fiyat: '7.000 ₺',
-      birimFiyat: '280 ₺ / ton',
-      tarih: '2023-12-28',
-      durum: 'Tamamlandı',
-      durumClass: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-      alici: 'BioEnerji A.Ş.',
-      siparisNo: 'SP-2023-045',
-    },
-  ];
-
-  const filtrelenmisSatislar = satislar.filter((satis) => {
-    if (selectedFilter === 'tumu') return true;
-    if (selectedFilter === 'tamamlandi') return satis.durum === 'Tamamlandı';
-    if (selectedFilter === 'kargoda') return satis.durum === 'Kargoda';
-    if (selectedFilter === 'hazirlaniyor') return satis.durum === 'Hazırlanıyor';
-    return true;
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [satislar, setSatislar] = useState<Satis[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [stats, setStats] = useState({
+    toplamSatis: 0,
+    tamamlanan: 0,
+    toplamGelir: 0
   });
 
-  const toplamGelir = filtrelenmisSatislar
-    .filter((s) => s.durum === 'Tamamlandı')
-    .reduce((toplam, satis) => {
-      const fiyat = parseFloat(satis.fiyat.replace(/[^\d,]/g, '').replace(',', '.'));
-      return toplam + fiyat;
-    }, 0);
+  // Satışları API'den yükle
+  const loadSales = async () => {
+    setLoading(true);
+    try {
+      const response = await ciftciService.getSalesHistory({
+        page: currentPage,
+        limit: 50,
+        durum: selectedFilter,
+        search: searchTerm || undefined
+      });
+
+      if (response.success) {
+        setSatislar(response.sales);
+        setTotalPages(response.pagination.totalPages);
+        setStats(response.stats);
+      } else {
+        toast.error('Satış geçmişi yüklenemedi');
+        setSatislar([]);
+      }
+    } catch (error: any) {
+      console.error('Satış geçmişi yükleme hatası:', error);
+      toast.error(error.response?.data?.message || 'Satış geçmişi yüklenirken bir hata oluştu');
+      setSatislar([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSales();
+  }, [currentPage, selectedFilter, searchTerm]);
+
+  // Filtre değiştiğinde sayfayı sıfırla
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedFilter, searchTerm]);
+
 
   return (
     <div className="bg-background-light dark:bg-background-dark font-display text-content-light dark:text-content-dark min-h-screen flex flex-col">
@@ -142,6 +91,8 @@ function CiftciSatisGecmisi() {
                     className="w-full min-w-0 sm:min-w-[300px] pl-10 pr-4 py-2.5 rounded-xl bg-background-light dark:bg-background-dark border-2 border-border-light dark:border-border-dark focus:ring-2 focus:ring-primary focus:border-primary transition-all text-content-light dark:text-content-dark placeholder:text-subtle-light dark:placeholder:text-subtle-dark"
                     placeholder="Ürün veya alıcı ara"
                     type="search"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
                 <div className="relative">
@@ -167,14 +118,14 @@ function CiftciSatisGecmisi() {
                   <p className="text-sm font-medium text-subtle-light dark:text-subtle-dark">Toplam Satış</p>
                   <span className="material-symbols-outlined text-green-600 dark:text-green-400">sell</span>
                 </div>
-                <p className="text-2xl font-bold text-content-light dark:text-content-dark">{filtrelenmisSatislar.length}</p>
+                <p className="text-2xl font-bold text-content-light dark:text-content-dark">{stats.toplamSatis}</p>
               </div>
               <div className="rounded-xl border border-border-light dark:border-border-dark bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-900/20 dark:to-blue-800/10 p-5 shadow-sm">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-sm font-medium text-subtle-light dark:text-subtle-dark">Toplam Gelir</p>
                   <span className="material-symbols-outlined text-blue-600 dark:text-blue-400">payments</span>
                 </div>
-                <p className="text-2xl font-bold text-content-light dark:text-content-dark">{toplamGelir.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺</p>
+                <p className="text-2xl font-bold text-content-light dark:text-content-dark">{stats.toplamGelir.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺</p>
               </div>
               <div className="rounded-xl border border-border-light dark:border-border-dark bg-gradient-to-br from-purple-50 to-purple-100/50 dark:from-purple-900/20 dark:to-purple-800/10 p-5 shadow-sm">
                 <div className="flex items-center justify-between mb-2">
@@ -182,7 +133,7 @@ function CiftciSatisGecmisi() {
                   <span className="material-symbols-outlined text-purple-600 dark:text-purple-400">check_circle</span>
                 </div>
                 <p className="text-2xl font-bold text-content-light dark:text-content-dark">
-                  {filtrelenmisSatislar.filter((s) => s.durum === 'Tamamlandı').length}
+                  {stats.tamamlanan}
                 </p>
               </div>
             </div>
@@ -205,8 +156,17 @@ function CiftciSatisGecmisi() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border-light dark:divide-border-dark">
-                  {filtrelenmisSatislar.length > 0 ? (
-                    filtrelenmisSatislar.map((satis) => (
+                  {loading ? (
+                    <tr>
+                      <td colSpan={8} className="px-6 py-12 text-center">
+                        <div className="flex flex-col items-center gap-3">
+                          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+                          <p className="text-sm font-medium text-subtle-light dark:text-subtle-dark">Yükleniyor...</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : satislar.length > 0 ? (
+                    satislar.map((satis) => (
                       <tr
                         key={satis.id}
                         className="hover:bg-primary/5 dark:hover:bg-primary/10 transition-colors"
@@ -253,6 +213,57 @@ function CiftciSatisGecmisi() {
               </table>
             </div>
           </div>
+
+          {/* Sayfalama */}
+          {!loading && totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 flex-wrap mt-8">
+              <button
+                type="button"
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark text-content-light dark:text-content-dark hover:bg-primary/10 dark:hover:bg-primary/20 hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="material-symbols-outlined text-base">chevron_left</span>
+              </button>
+
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+
+                return (
+                  <button
+                    key={pageNum}
+                    type="button"
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      currentPage === pageNum
+                        ? 'bg-primary text-white'
+                        : 'bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark text-content-light dark:text-content-dark hover:bg-primary/10 dark:hover:bg-primary/20 hover:text-primary'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+
+              <button
+                type="button"
+                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark text-content-light dark:text-content-dark hover:bg-primary/10 dark:hover:bg-primary/20 hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="material-symbols-outlined text-base">chevron_right</span>
+              </button>
+            </div>
+          )}
         </div>
       </main>
     </div>

@@ -87,32 +87,12 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Okunmamış sayısını yükle (daha hafif)
-  const loadUnreadCount = useCallback(async () => {
-    try {
-      const response = await notificationService.getUnreadCount();
-      if (response.success && response.count !== undefined) {
-        setUnreadCount(response.count);
-      }
-    } catch (err) {
-      // Sessizce devam et, sadece sayı yüklenemiyor
-      console.warn('Okunmamış bildirim sayısı yüklenemedi:', err);
-    }
-  }, []);
-
   // İlk yükleme
   useEffect(() => {
     loadNotifications();
   }, [loadNotifications]);
 
-  // Polling - Her 30 saniyede bir okunmamış sayısını güncelle
-  useEffect(() => {
-    const interval = setInterval(() => {
-      loadUnreadCount();
-    }, 30000); // 30 saniye
-
-    return () => clearInterval(interval);
-  }, [loadUnreadCount]);
+  // Polling kaldırıldı - Sadece gerektiğinde refreshNotifications() çağrılacak
 
   // Bildirimleri yenile
   const refreshNotifications = useCallback(async () => {
