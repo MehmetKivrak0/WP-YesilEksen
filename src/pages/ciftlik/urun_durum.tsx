@@ -19,7 +19,7 @@ type ProductApplication = {
     status: DocumentStatus;
     url?: string;
     belgeId?: string;
-    adminNote?: string;
+    farmerNote?: string;
   }>;
 };
 
@@ -405,7 +405,7 @@ function UrunDurum() {
                             );
                           })()}
                         </div>
-                        {doc.adminNote && (
+                        {doc.farmerNote && (
                           <div className={`mt-3 p-3 rounded-lg ${
                             doc.status === 'Reddedildi' 
                               ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800' 
@@ -416,14 +416,14 @@ function UrunDurum() {
                                 ? 'text-red-800 dark:text-red-200' 
                                 : 'text-amber-800 dark:text-amber-200'
                             }`}>
-                              {doc.status === 'Reddedildi' ? 'Reddetme Nedeni:' : 'Admin Notu:'}
+                              {doc.status === 'Reddedildi' ? 'Reddetme Nedeni:' : 'Yönetici Mesajı:'}
                             </p>
                             <p className={`text-sm ${
                               doc.status === 'Reddedildi' 
                                 ? 'text-red-700 dark:text-red-300' 
                                 : 'text-amber-700 dark:text-amber-300'
                             }`}>
-                              {doc.adminNote}
+                              {doc.farmerNote}
                             </p>
                           </div>
                         )}
@@ -581,8 +581,8 @@ function UrunDurum() {
                                 </div>
                               </div>
                               
-                              {/* Admin Notu - Daha Belirgin */}
-                              {doc.adminNote && (
+                              {/* Çiftçiye Gidecek Mesaj (Yönetici Mesajı) - Daha Belirgin */}
+                              {doc.farmerNote && (
                                 <div className={`text-xs font-medium ${
                                   isReddedildi 
                                     ? 'text-red-800 dark:text-red-200 bg-red-100 dark:bg-red-900/30 border-2 border-red-300 dark:border-red-700' 
@@ -593,8 +593,8 @@ function UrunDurum() {
                                       {isReddedildi ? 'error' : 'info'}
                                     </span>
                                     <div>
-                                      <span className="font-bold">{isReddedildi ? 'Reddetme Nedeni: ' : 'Admin Notu: '}</span>
-                                      {doc.adminNote}
+                                      <span className="font-bold">{isReddedildi ? 'Reddetme Nedeni: ' : 'Yönetici Mesajı: '}</span>
+                                      {doc.farmerNote}
                                     </div>
                                   </div>
                                 </div>

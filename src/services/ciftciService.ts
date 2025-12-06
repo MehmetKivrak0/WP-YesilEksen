@@ -341,7 +341,7 @@ export const ciftciService = {
                 status: 'Onaylandı' | 'Eksik' | 'Beklemede' | 'Reddedildi';
                 url?: string;
                 belgeId?: string;
-                adminNote?: string;
+                farmerNote?: string;
             }>;
         }>;
     }> => {

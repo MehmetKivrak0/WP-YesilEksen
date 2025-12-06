@@ -789,20 +789,52 @@ const getFarmApplications = async (req, res) => {
 
 // Approve Product - POST /api/ziraat/products/approve/:id
 const approveProduct = async (req, res) => {
+    const client = await pool.connect();
     try {
+        await client.query('BEGIN');
+
         const { id } = req.params;
-        const { note } = req.body;
+        const { note } = req.body || {};
+        const adminId = req.user?.id;
+
+        // Yetki kontrolü
+        if (!adminId) {
+            await client.query('ROLLBACK');
+            return res.status(401).json({
+                success: false,
+                message: 'Yetkisiz işlem. Lütfen giriş yapın.'
+            });
+        }
+
+        // ID validasyonu
+        if (!id || typeof id !== 'string' || id.trim() === '') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+                success: false,
+                message: 'Geçersiz başvuru ID\'si'
+            });
+        }
+
+        const trimmedId = id.trim();
+
+        console.log(`🔄 [URUN ONAY] Onay işlemi başlatılıyor:`, {
+            basvuru_id: trimmedId,
+            admin_id: adminId,
+            note: note ? 'var' : 'yok'
+        });
 
         // Ürün başvurusunu kontrol et ve çiftçi bilgilerini al
-        const checkResult = await pool.query(
-            `SELECT ub.id, ub.durum, ub.urun_adi, ub.ciftlik_id, c.kullanici_id
+        const checkResult = await client.query(
+            `SELECT ub.id, ub.durum, ub.urun_adi, ub.ciftlik_id, ub.urun_id, c.kullanici_id
              FROM urun_basvurulari ub
              JOIN ciftlikler c ON ub.ciftlik_id = c.id
-             WHERE ub.id = $1`,
-            [id]
+             WHERE ub.id = $1::uuid`,
+            [trimmedId]
         );
 
         if (checkResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+            console.error(`❌ [URUN ONAY] Başvuru bulunamadı:`, trimmedId);
             return res.status(404).json({
                 success: false,
                 message: 'Ürün başvurusu bulunamadı'
@@ -811,22 +843,83 @@ const approveProduct = async (req, res) => {
 
         const basvuru = checkResult.rows[0];
         const ciftciKullaniciId = basvuru.kullanici_id;
+        const mevcutDurum = basvuru.durum;
 
-        // Durumu güncelle
-        await pool.query(
-            'UPDATE urun_basvurulari SET durum = $1, guncelleme = NOW(), onay_tarihi = NOW(), inceleyen_id = $2 WHERE id = $3',
-            ['onaylandi', req.user.id, id]
-        );
-
-        // Not varsa ekle
-        if (note) {
-            await pool.query(
-                'UPDATE urun_basvurulari SET notlar = $1 WHERE id = $2',
-                [note, id]
-            );
+        // Başvuru zaten onaylanmış mı kontrol et
+        if (mevcutDurum === 'onaylandi') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+                success: false,
+                message: 'Bu ürün başvurusu zaten onaylanmış'
+            });
         }
 
-        // Bildirim oluştur - Çiftçiye ürün onaylandı bildirimi gönder
+        // Tüm belgelerin durumunu kontrol et (opsiyonel - sadece zorunlu belgeler kontrol edilebilir)
+        // Şimdilik tüm belgelerin yüklenmiş olmasını kontrol etmiyoruz, admin karar verir
+        // İleride zorunlu belgeler kontrolü eklenebilir
+
+        // Durumu güncelle ve not ekle (tek sorguda)
+        const updateQuery = note 
+            ? `UPDATE urun_basvurulari 
+               SET durum = 'onaylandi', 
+                   guncelleme = CURRENT_TIMESTAMP, 
+                   onay_tarihi = CURRENT_TIMESTAMP, 
+                   inceleyen_id = $1::uuid,
+                   notlar = $2
+               WHERE id = $3::uuid
+               RETURNING id, durum, onay_tarihi`
+            : `UPDATE urun_basvurulari 
+               SET durum = 'onaylandi', 
+                   guncelleme = CURRENT_TIMESTAMP, 
+                   onay_tarihi = CURRENT_TIMESTAMP, 
+                   inceleyen_id = $1::uuid
+               WHERE id = $2::uuid
+               RETURNING id, durum, onay_tarihi`;
+
+        const updateParams = note 
+            ? [adminId, note, trimmedId]
+            : [adminId, trimmedId];
+
+        const updateResult = await client.query(updateQuery, updateParams);
+
+        if (updateResult.rowCount === 0) {
+            await client.query('ROLLBACK');
+            console.error(`❌ [URUN ONAY] Güncelleme başarısız:`, trimmedId);
+            return res.status(500).json({
+                success: false,
+                message: 'Başvuru durumu güncellenemedi'
+            });
+        }
+
+        console.log(`✅ [URUN ONAY] Başvuru durumu güncellendi:`, {
+            basvuru_id: trimmedId,
+            eski_durum: mevcutDurum,
+            yeni_durum: updateResult.rows[0].durum,
+            onay_tarihi: updateResult.rows[0].onay_tarihi
+        });
+
+        // Ürün onaylandığında, bu başvuruya ait TÜM belgelerin durumunu "onaylandi" yap
+        const belgeUpdateResult = await client.query(
+            `UPDATE belgeler
+             SET durum = 'onaylandi',
+                 guncelleme = CURRENT_TIMESTAMP,
+                 inceleme_tarihi = CURRENT_TIMESTAMP,
+                 inceleyen_id = $1::uuid
+             WHERE basvuru_id = $2::uuid 
+               AND basvuru_tipi = 'urun_basvurusu'
+               AND durum != 'onaylandi'`,
+            [adminId, trimmedId]
+        );
+
+        console.log(`✅ [URUN ONAY] ${belgeUpdateResult.rowCount} belge durumu "onaylandi" olarak güncellendi:`, {
+            basvuru_id: trimmedId,
+            guncellenen_belge_sayisi: belgeUpdateResult.rowCount
+        });
+
+        // Transaction'ı commit et
+        await client.query('COMMIT');
+
+        // Bildirim oluştur - Çiftçiye ürün onaylandı bildirimi gönder (transaction dışında)
         try {
             await createNotification({
                 kullanici_id: ciftciKullaniciId,
@@ -835,8 +928,10 @@ const approveProduct = async (req, res) => {
                 mesaj: `"${basvuru.urun_adi}" adlı ürün başvurunuz onaylandı. Ürününüz artık platformda görünebilir.${note ? `\n\nNot: ${note}` : ''}`,
                 link: `/ciftlik/urunler`
             });
+            console.log(`✅ [URUN ONAY] Bildirim gönderildi:`, ciftciKullaniciId);
         } catch (notificationError) {
-            console.error('⚠️ Bildirim oluşturma hatası (işlem başarılı):', notificationError);
+            console.error('⚠️ [URUN ONAY] Bildirim oluşturma hatası (işlem başarılı):', notificationError);
+            // Bildirim hatası işlemi başarısız yapmaz
         }
 
         res.json({
@@ -844,11 +939,35 @@ const approveProduct = async (req, res) => {
             message: 'Ürün başvurusu başarıyla onaylandı'
         });
     } catch (error) {
-        console.error('Approve product hatası:', error);
+        await client.query('ROLLBACK');
+        console.error('❌ [URUN ONAY] İşlem hatası:', {
+            message: error.message,
+            stack: error.stack,
+            code: error.code,
+            detail: error.detail,
+            basvuru_id: req.params?.id
+        });
+        
+        let errorMessage = 'Ürün onaylama işlemi başarısız';
+        if (error.code === '23505') {
+            errorMessage = 'Bu işlem zaten gerçekleştirilmiş';
+        } else if (error.code === '23503') {
+            errorMessage = 'Bağlantı hatası: İlişkili kayıt bulunamadı';
+        } else if (error.message) {
+            errorMessage = `Hata: ${error.message}`;
+        }
+
         res.status(500).json({
             success: false,
-            message: 'Ürün onaylama işlemi başarısız'
+            message: errorMessage,
+            error: process.env.NODE_ENV === 'development' ? {
+                message: error.message,
+                code: error.code,
+                detail: error.detail
+            } : undefined
         });
+    } finally {
+        client.release();
     }
 };
 

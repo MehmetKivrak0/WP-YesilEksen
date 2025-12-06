@@ -801,7 +801,7 @@ const getMyProductApplications = async (req, res) => {
                     END as status,
                     b.dosya_yolu as url,
                     b.id::text as "belgeId",
-                    COALESCE(b.yonetici_notu, '') as "adminNote"
+                    COALESCE(b.kullanici_notu, '') as "farmerNote"
                 FROM belgeler b
                 LEFT JOIN belge_turleri bt ON b.belge_turu_id = bt.id
                 WHERE b.basvuru_id = $1 AND b.basvuru_tipi = 'urun_basvurusu'

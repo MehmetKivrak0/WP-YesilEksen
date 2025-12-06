@@ -117,7 +117,7 @@ export const ziraatService = {
 
     //Ürün Başvurusu Onayla
     approveProduct: async (id: string, data?: { note?: string }): Promise<{ success: boolean; message: string }> => {
-        const response = await api.post(`/ziraat/products/${id}/approve`, data);
+        const response = await api.post(`/ziraat/products/approve/${id}`, data);
         return response.data;
     },
 

@@ -102,15 +102,13 @@ function ProductApplicationsPage() {
       try {
         setLoading(true);
         setError(null);
-        const statusFilter = selectedStatus === 'Hepsi' ? undefined : 
-          selectedStatus === 'Onaylandı' ? 'onaylandi' :
-          selectedStatus === 'Revizyon' ? 'revizyon' :
-          selectedStatus === 'Reddedildi' ? 'reddedildi' : 'incelemede';
         
+        // İstatistikler için her zaman tüm başvuruları çek (status filtresi gönderme)
+        // Frontend'de filtreleme yapılacak
         const response = await ziraatService.getProductApplications({
           page: 1,
           limit: 100,
-          status: statusFilter,
+          // status filtresini kaldırdık - tüm başvurular gelsin, istatistikler doğru olsun
         });
 
         if (response.success) {
@@ -160,7 +158,7 @@ function ProductApplicationsPage() {
     };
 
     loadApplications();
-  }, [selectedStatus]);
+  }, []); // Sadece sayfa yüklendiğinde çalışsın, status değiştiğinde filtreleme frontend'de yapılacak
 
   const filteredApplications =
     selectedStatus === 'Hepsi'
@@ -170,18 +168,28 @@ function ProductApplicationsPage() {
   const closeInspectModal = () => setInspectedApplication(null);
   
   const handleApprove = async (applicationId: string) => {
+    if (!applicationId) {
+      toast.error('Geçersiz başvuru ID\'si');
+      return;
+    }
+
     try {
       setIsApproving(applicationId);
-      await ziraatService.approveProduct(applicationId);
       
-      // Başvuruları yeniden yükle
+      // Onaylama işlemini gerçekleştir
+      const approveResponse = await ziraatService.approveProduct(applicationId);
+      
+      if (!approveResponse.success) {
+        throw new Error(approveResponse.message || 'Onaylama işlemi başarısız');
+      }
+      
+      toast.success(approveResponse.message || 'Ürün başvurusu başarıyla onaylandı');
+      
+      // Başvuruları yeniden yükle (tüm başvuruları çek, istatistikler doğru olsun)
       const response = await ziraatService.getProductApplications({
         page: 1,
         limit: 100,
-        status: selectedStatus === 'Hepsi' ? undefined : 
-          selectedStatus === 'Onaylandı' ? 'onaylandi' :
-          selectedStatus === 'Revizyon' ? 'revizyon' :
-          selectedStatus === 'Reddedildi' ? 'reddedildi' : 'incelemede',
+        // status filtresi kaldırıldı - frontend'de filtreleme yapılacak
       });
 
       if (response.success) {
@@ -210,11 +218,28 @@ function ProductApplicationsPage() {
           })),
         }));
         setApplications(mappedApplications);
-        toast.success('Ürün başvurusu başarıyla onaylandı');
+      } else {
+        console.warn('Başvurular yeniden yüklenemedi, ancak onaylama başarılı');
       }
     } catch (err: any) {
       console.error('Onaylama hatası:', err);
-      toast.error(err.response?.data?.message || 'Onaylama işlemi başarısız');
+      
+      // Hata mesajını kullanıcıya göster
+      let errorMessage = 'Onaylama işlemi başarısız';
+      
+      if (err.response?.status === 404) {
+        errorMessage = 'Ürün başvurusu bulunamadı';
+      } else if (err.response?.status === 401) {
+        errorMessage = 'Yetkiniz yok. Lütfen tekrar giriş yapın.';
+      } else if (err.response?.status === 400) {
+        errorMessage = err.response?.data?.message || 'Geçersiz istek';
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      toast.error(errorMessage);
     } finally {
       setIsApproving(null);
     }
@@ -231,14 +256,11 @@ function ProductApplicationsPage() {
       setIsRejecting(rejectedApplication.id);
       await ziraatService.rejectProduct(rejectedApplication.id, { reason: rejectReason });
       
-      // Başvuruları yeniden yükle
+      // Başvuruları yeniden yükle (tüm başvuruları çek, istatistikler doğru olsun)
       const response = await ziraatService.getProductApplications({
         page: 1,
         limit: 100,
-        status: selectedStatus === 'Hepsi' ? undefined : 
-          selectedStatus === 'Onaylandı' ? 'onaylandi' :
-          selectedStatus === 'Revizyon' ? 'revizyon' :
-          selectedStatus === 'Reddedildi' ? 'reddedildi' : 'incelemede',
+        // status filtresi kaldırıldı - frontend'de filtreleme yapılacak
       });
 
       if (response.success) {
@@ -360,14 +382,11 @@ function ProductApplicationsPage() {
         },
       }));
 
-      // Başvuruları yeniden yükle
+      // Başvuruları yeniden yükle (tüm başvuruları çek, istatistikler doğru olsun)
       const response = await ziraatService.getProductApplications({
         page: 1,
         limit: 100,
-        status: selectedStatus === 'Hepsi' ? undefined : 
-          selectedStatus === 'Onaylandı' ? 'onaylandi' :
-          selectedStatus === 'Revizyon' ? 'revizyon' :
-          selectedStatus === 'Reddedildi' ? 'reddedildi' : 'incelemede',
+        // status filtresi kaldırıldı - frontend'de filtreleme yapılacak
       });
 
       if (response.success && inspectedApplication) {
@@ -701,7 +720,7 @@ function ProductApplicationsPage() {
                             <button
                               className="rounded-full bg-red-600 px-4 py-1 text-sm font-medium text-white transition-colors hover:bg-red-500 dark:hover:bg-red-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
                               onClick={() => setRejectedApplication(application)}
-                              disabled={isRejecting === application.id || application.status === 'Reddedildi'}
+                              disabled={isRejecting === application.id || application.status === 'Reddedildi' || application.status === 'Onaylandı'}
                             >
                               Reddet
                             </button>
@@ -1261,14 +1280,11 @@ function ProductApplicationsPage() {
                     await ziraatService.sendProductBelgeEksikMessage(selectedApplicationForBelgeEksik.id, { belgeMessages });
                     toast.success('Eksik belge bildirimi başarıyla gönderildi');
                     
-                    // Başvuruları yeniden yükle
+                    // Başvuruları yeniden yükle (tüm başvuruları çek, istatistikler doğru olsun)
                     const response = await ziraatService.getProductApplications({
                       page: 1,
                       limit: 100,
-                      status: selectedStatus === 'Hepsi' ? undefined : 
-                        selectedStatus === 'Onaylandı' ? 'onaylandi' :
-                        selectedStatus === 'Revizyon' ? 'revizyon' :
-                        selectedStatus === 'Reddedildi' ? 'reddedildi' : 'incelemede',
+                      // status filtresi kaldırıldı - frontend'de filtreleme yapılacak
                     });
 
                     if (response.success) {
